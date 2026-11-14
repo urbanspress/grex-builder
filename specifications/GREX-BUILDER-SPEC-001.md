@@ -11,7 +11,7 @@
 
 ## 1. Purpose & `v0.1` Scope
 
-`GREX-BUILDER-SPEC-001` defines the `v0.1` foundation of **Grex Theme Builder** (`grex-builder`), a responsive-first visual design studio packaged as an installable **GrabLab CMS `mode: "visual"` theme**.
+`GREX-BUILDER-SPEC-001` defines the `v0.1` foundation of **Grex Theme Builder**, a responsive-first visual design studio packaged as an installable **GrabLab CMS `mode: "visual"` theme**.
 
 ### Included in `v0.1`
 1. **Exclusive `mode: "visual"` Theme Package:** Valid GrabLab `theme.json` manifest, default `grex.elements.json` slot definitions (`home`, `single`, `archive`, `404`, `search`, `parts`), and static studio assets.
@@ -30,7 +30,7 @@
 
 ## 2. Exclusive `mode: "visual"` GrabLab Theme Package
 
-Per `GRABLAB-SPEC-100` Section 3, `grex-builder` ships as an installable theme package directory `theme/` (installed to GrabLab `themes/grex-builder/`, never a plugin):
+Per `GRABLAB-SPEC-100` Section 3, **Grex Theme Builder** ships as an installable theme package directory `theme/` (installed to GrabLab `themes/grex-builder/`, never a plugin):
 
 ```text
 theme/
@@ -112,7 +112,7 @@ theme/
 ```
 
 ### 2.2 Activation & Security Boundaries (`GRAB-E401`)
-- Activating `grex-builder` via GrabLab `/admin/themes` (`POST /api/themes/activate`) automatically deactivates the prior active theme (`coded` or `visual`), updates `site_settings`, and invalidates all GrabLab `use cache` query/render epochs.
+- Activating **Grex Theme Builder** (`grex-builder`) via GrabLab `/admin/themes` (`POST /api/themes/activate`) automatically deactivates the prior active theme (`coded` or `visual`), updates `site_settings`, and invalidates all GrabLab `use cache` query/render epochs.
 - All files stay strictly within GrabLab limits: depth `<= 8`, files `<= 250`, single file `<= 5 MB`, total size `<= 25 MB`, and only allowlisted extensions (`.json`, `.css`, `.js` in `assets/`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.woff2`).
 - Every node in `grex.elements.json` and any saved/published layout rejects `<div>`, `<script>`, `<iframe>`, `<object>`, `<style>`, inline `on*` attributes, `innerHTML`, unsafe URLs (`javascript:`, unsanitized `data:`), and nesting deeper than `24` levels.
 
@@ -194,7 +194,7 @@ The studio hosts a split-screen preview pane (`<iframe>` loaded from the active 
 ## 8. `v0.1` Acceptance & Verification Gate
 
 `v0.1` is complete only when all checks pass 100%:
-1. `grex-builder` installs and activates in **GrabLab CMS v1.0.0** via `POST /api/themes/activate` as an exclusive `mode: "visual"` theme, deactivating the prior theme cleanly.
+1. **Grex Theme Builder** (`grex-builder`) installs and activates in **GrabLab CMS v1.0.0** via `POST /api/themes/activate` as an exclusive `mode: "visual"` theme, deactivating the prior theme cleanly.
 2. `createBuilderStore` runs 100% on `Grex JS v1.0.0` signals with zero Vue/Pinia/Webpack/Node runtime dependencies.
 3. All 20 elements from `grex.elements.json` can be inserted, selected, reordered, edited, undone, and redone via the deterministic command stack.
 4. `GrexPreviewBridge` rejects untrusted origins and patches text/attributes/styles/tokens in browser memory without Grisp restarts.

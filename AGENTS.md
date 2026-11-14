@@ -1,4 +1,4 @@
-# AGENTS.md — Grex Theme Builder (`grex-builder`)
+# AGENTS.md — Grex Theme Builder
 
 **Grex Theme Builder** is Step 3 of the Post-1.0 GRAB Ecosystem: a responsive-first visual page and conditional theme builder built purely on **GRAB v1.1.0**, **GrabLab CMS v1.0.0**, and **Grex JS v1.0.0** (zero Vue, Pinia, Node, Webpack, or Vite bloat).
 

@@ -44,7 +44,7 @@
 | `contrastWarnings` | `computed<ContrastWarning[]>` | Live WCAG AA (`4.5:1`) contrast audit across configured foreground/background token pairs and active element/class color pairs. |
 
 ### 2.2 Breakpoint Contract (`BUILDER_BREAKPOINTS`)
-`grex.js` exports `DEFAULT_BREAKPOINTS` with `mobile: "(max-width: 640px)"`. To match the `v0.2` responsive specification, `grex-builder` passes an explicit breakpoint map to `compileTokenCss()`, `compileElementStyles()`, and `classManager.compileCss()`:
+`grex.js` exports `DEFAULT_BREAKPOINTS` with `mobile: "(max-width: 640px)"`. To match the `v0.2` responsive specification, **Grex Theme Builder** passes an explicit breakpoint map to `compileTokenCss()`, `compileElementStyles()`, and `classManager.compileCss()`:
 
 ```js
 export const BUILDER_BREAKPOINTS = Object.freeze({

@@ -1,12 +1,12 @@
 # GREX-BUILDER-EXPERT.md — Non-Negotiable Invariants
 
-This checklist defines the **never-break invariants** for **Grex Theme Builder (`grex-builder`)**. Every specification, module, PR, and release must satisfy all four pillars.
+This checklist defines the **never-break invariants** for **Grex Theme Builder**. Every specification, module, PR, and release must satisfy all four pillars.
 
 ---
 
 ## 1. Exclusive `mode: "visual"` GrabLab Theme Contract
-- **Theme, Never Plugin:** `grex-builder` MUST ship as a valid GrabLab CMS theme package (`theme.json` with `"schemaVersion": "1.0.0"`, `"mode": "visual"`, `"engine": "grex-visual"`). Third-party plugin manifests or arbitrary executable hooks are forbidden (`GRAB-E401`).
-- **Exclusive Template Ownership:** When activated via GrabLab `/admin/themes` (`POST /api/themes/activate` or `POST /api/admin/themes/activate`), `grex-builder` automatically deactivates the prior active theme and takes **100% exclusive template rendering control** across required slots (`home`, `single`, `archive`, `404`, plus optional `search` and `parts`).
+- **Theme, Never Plugin:** **Grex Theme Builder** MUST ship as a valid GrabLab CMS theme package (`theme.json` with `"schemaVersion": "1.0.0"`, `"mode": "visual"`, `"engine": "grex-visual"`). Third-party plugin manifests or arbitrary executable hooks are forbidden (`GRAB-E401`).
+- **Exclusive Template Ownership:** When activated via GrabLab `/admin/themes` (`POST /api/themes/activate` or `POST /api/admin/themes/activate`), **Grex Theme Builder** automatically deactivates the prior active theme and takes **100% exclusive template rendering control** across required slots (`home`, `single`, `archive`, `404`, plus optional `search` and `parts`).
 - **Package & Hook Boundaries (`GRAB-E401`):**
   - Permitted capabilities only: `["templates", "parts", "hooks:theme", "grex:visual", "assets:static"]`.
   - Permitted theme hooks only: `theme:head_meta`, `theme:before_render`, `query:modify_args`, `content:before_save` using GrabLab's allowlisted handler identifiers.

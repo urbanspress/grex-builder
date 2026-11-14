@@ -1,4 +1,4 @@
-# Grex Theme Builder (`grex-builder`) Roadmap
+# Grex Theme Builder Roadmap
 
 **Grex Theme Builder** is the installable `mode: "visual"` GrabLab CMS theme and visual design studio powered purely by **GRAB**, **GrabLab CMS v1.0.0**, and **Grex JS v1.0.0**.
 

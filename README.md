@@ -1,4 +1,4 @@
-# Grex Theme Builder (`grex-builder`)
+# Grex Theme Builder
 
 ![Built with GRAB v1.1.0](docs/badges/built-with-grab.svg)
 ![Powered by Grex JS v1.0.0](docs/badges/powered-by-grex-js.svg)
@@ -27,7 +27,7 @@ grab serve --allow-scripts --db-config grab.data.json --allow-db main:read-write
 Open `http://127.0.0.1:8080/studio` to edit templates, global `--grex-*` theme tokens, reusable `.grex-c-*` classes, and responsive breakpoints, then publish compiled CSS to `public/grex/`.
 
 ### 2. Install in GrabLab CMS v1.0.0
-Package `theme/` (`python scripts/package_release.py --version 0.2.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (`grex-builder`) from `/admin/themes`.
+Package `theme/` (`python scripts/package_release.py --version 0.2.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (slug `grex-builder`) from `/admin/themes`.
 
 ### 3. Run Verification Suite
 ```powershell

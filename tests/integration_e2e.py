@@ -134,7 +134,7 @@ def test_grab_html_templates():
     assert len(templates) == 11, f"Expected 11 .grab.html files, got {len(templates)}"
 
     sample_vars = {
-        "site_title": "Grex Builder",
+        "site_title": "Grex Theme Builder",
         "tagline": "Visual Theme",
         "site_description": "Pure GRAB + Grex JS",
         "page_title": "Home",
@@ -498,7 +498,7 @@ def test_grablab_cms_visual_theme_integration():
             parse_cookies(sc, jar)
             csrf = setup_res["csrf_token"]
 
-            # Activate exclusive `mode: "visual"` Grex Builder theme
+            # Activate exclusive `mode: "visual"` Grex Theme Builder theme
             st, _, _, _, act_res = http_req(
                 port,
                 "POST",
@@ -548,7 +548,7 @@ def test_grablab_cms_visual_theme_integration():
                 "tag": "section",
                 "props": {"class": "grex-article-section"},
                 "children": [
-                    {"element": "Heading", "props": {"level": 2, "text": "Edited by Groxy AI + Grex Builder"}},
+                    {"element": "Heading", "props": {"level": 2, "text": "Edited by Groxy AI + Grex Theme Builder"}},
                     {"element": "Text", "props": {"text": "Zero-div semantic Grex layout synced via MCP."}},
                 ],
             }
@@ -561,7 +561,7 @@ def test_grablab_cms_visual_theme_integration():
             )
             body_html = ul_res.get("body_html") or (ul_res.get("entry") or {}).get("body_html", "")
             assert st == 200 and "<div" not in body_html.lower(), (st, ul_res)
-            assert "Edited by Groxy AI + Grex Builder" in body_html, ul_res
+            assert "Edited by Groxy AI + Grex Theme Builder" in body_html, ul_res
         finally:
             proc.terminate()
             proc.wait(timeout=5)
