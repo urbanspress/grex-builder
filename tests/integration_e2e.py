@@ -125,10 +125,10 @@ def test_grab_static_checks():
         "src/studio.grab",
     ]:
         p = ROOT_DIR / rel
-        before = p.read_text(encoding="utf-8")
-        run_cmd([GRAB_BIN, "format", "--write", rel])
-        after = p.read_text(encoding="utf-8")
-        assert before == after, f"{rel} was not canonically formatted before check."
+        before = p.read_text(encoding="utf-8").replace("\r\n", "\n")
+        res = run_cmd([GRAB_BIN, "format", rel])
+        formatted = res.stdout.replace("\r\n", "\n")
+        assert before == formatted, f"{rel} does not match canonical `grab format` output."
 
 
 def test_grab_html_templates():
@@ -200,6 +200,7 @@ def test_node_unit_and_dom_suite():
         "tests/unit_v02_design_system.test.js",
         "tests/unit_v03_conditional_dynamic.test.js",
         "tests/unit_v04_revisions_ai.test.js",
+        "tests/unit_v100_production_audit.test.js",
     ])
     assert "fail 0" in res.stdout or res.returncode == 0, res.stdout
 
@@ -295,6 +296,8 @@ def test_live_studio_server():
         try:
             health = wait_for_health(port, "/_health", proc=proc)
             assert health.get("status") == "ok", health
+            st, _, _, _, ready_res = http_req(port, "GET", "/_ready")
+            assert st == 200 and ready_res.get("status") == "ready", (st, ready_res)
 
             # Verify public/theme/* stays in sync with theme/assets/*
             for asset_src in (ROOT_DIR / "theme" / "assets").iterdir():
@@ -342,6 +345,16 @@ def test_live_studio_server():
                 port, "POST", "/api/studio/draft", {"document": bad_doc}, headers={"X-CSRF-Token": csrf}
             )
             assert st == 422 and bad_res["ok"] is False, bad_res
+
+            # Server-side WCAG AA gate on /api/studio/publish -> rejects Image missing alt with 422 GREX-A11Y-002
+            bad_pub_doc = json.loads(json.dumps(st0["draft"]))
+            bad_pub_doc["templates"]["home"]["children"].append(
+                {"element": "Image", "props": {"id": "bad-pub-img", "src": "/static/theme/preview-hero.svg"}}
+            )
+            st, _, _, _, bad_pub = http_req(
+                port, "POST", "/api/studio/publish", {"document": bad_pub_doc}, headers={"X-CSRF-Token": csrf}
+            )
+            assert st == 422 and bad_pub["ok"] is False and bad_pub["code"] == "GREX-A11Y-002", bad_pub
 
             # Save Draft with v0.2 theme tokens + reusable classes -> draft updates, published remains untouched
             draft_doc = json.loads(json.dumps(st0["draft"]))
@@ -599,6 +612,29 @@ def test_live_studio_server():
                 headers={"X-CSRF-Token": csrf},
             )
             assert st == 422 and alt_mcp["code"] == "GREX-A11Y-002" and alt_mcp["mcp_error"]["code"] == -32602, alt_mcp
+
+            # Reject inline event handler in attrs (attrs.onclick -> GREX-SEC-004)
+            st, _, _, _, bad_attr_mcp = http_req(
+                port,
+                "POST",
+                "/api/mcp/layout",
+                {
+                    "slot": "home",
+                    "layout": {
+                        "element": "Container",
+                        "tag": "section",
+                        "props": {"id": "attr-sec"},
+                        "attrs": {"onclick": "alert(1)"},
+                        "children": [],
+                    },
+                },
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert (
+                st == 422
+                and bad_attr_mcp["code"] == "GREX-SEC-004"
+                and bad_attr_mcp["mcp_error"]["code"] == -32602
+            ), bad_attr_mcp
 
             # Valid accessible AI layout succeeds -> draft updated, published intact, logged as actor: "groxy-ai"
             st, _, _, _, ok_mcp = http_req(

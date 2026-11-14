@@ -92,9 +92,25 @@ make map_put using obj, key, val
   give back m
 end
 
+make validate_attr_map using attr_map, scope_name
+  for each pk in (collections.keys using attr_map)
+    set pkl to text.lower using pk
+    if (text.starts_with using pkl, "on") or pkl is "innerhtml" or pkl is "outerhtml" or pkl is "dangerouslysetinnerhtml" or pkl is "srcdoc"
+      give back record {ok: no, code: "GREX-SEC-004", error: ("Unsafe attribute or inline event handler in " joined with scope_name joined with ": " joined with pk)}
+    end
+    if pkl is "href" or pkl is "src" or pkl is "action" or pkl is "formaction"
+      set uv to text.from using (attr_map at pk)
+      if not (is_safe_url using uv)
+        give back record {ok: no, code: "GREX-SEC-003", error: ("Unsafe URL protocol in " joined with scope_name joined with ": " joined with pk)}
+      end
+    end
+  end
+  give back record {ok: yes, code: "", error: ""}
+end
+
 make validate_grex_node using node, depth
   if depth is greater than 24
-    give back record {ok: no, error: "Grex layout nesting exceeds maximum depth (24)"}
+    give back record {ok: no, code: "GREX-SCHEMA-001", error: "Grex layout nesting exceeds maximum depth (24)"}
   end
   try
     set el_name to ""
@@ -106,28 +122,43 @@ make validate_grex_node using node, depth
       end
     end
     if el_name is "" or (not (is_allowed_grex_element using el_name))
-      give back record {ok: no, error: "Unsupported or unsafe Grex element: " joined with el_name}
+      give back record {ok: no, code: "GREX-SCHEMA-001", error: ("Unsupported or unsafe Grex element: " joined with el_name)}
     end
     if node has "tag"
       set tag_name to text.lower using (text.from using (node at "tag"))
       if tag_name is "div" or tag_name is "script" or tag_name is "iframe" or tag_name is "object" or tag_name is "style" or (not (is_allowed_grex_tag using tag_name))
-        give back record {ok: no, error: "Disallowed HTML tag in Grex layout: " joined with tag_name}
+        give back record {ok: no, code: "GREX-SCHEMA-001", error: ("Disallowed HTML tag in Grex layout: " joined with tag_name)}
       end
     end
     if node has "props"
-      set props to node at "props"
-      for each pk in (collections.keys using props)
-        set pkl to text.lower using pk
-        if text.starts_with using pkl, "on"
-          give back record {ok: no, error: "Inline event handler prop not allowed: " joined with pk}
+      set pr to validate_attr_map using (node at "props"), "prop"
+      if not pr.ok
+        give back pr
+      end
+    end
+    if node has "attrs"
+      set ar to validate_attr_map using (node at "attrs"), "attrs"
+      if not ar.ok
+        give back ar
+      end
+    end
+    if node has "styles"
+      set st_obj to node at "styles"
+      set style_maps to []
+      if (st_obj has "base") or (st_obj has "tablet") or (st_obj has "mobile")
+        for each bp in ["base", "tablet", "mobile"]
+          if st_obj has bp
+            set style_maps to collections.append using style_maps, (st_obj at bp)
+          end
         end
-        if pkl is "innerhtml" or pkl is "outerhtml" or pkl is "dangerouslysetinnerhtml"
-          give back record {ok: no, error: "Unsafe HTML sink prop not allowed: " joined with pk}
-        end
-        if pkl is "href" or pkl is "src" or pkl is "action" or pkl is "formaction"
-          set uv to text.from using (props at pk)
-          if not (is_safe_url using uv)
-            give back record {ok: no, error: "Unsafe URL protocol in prop: " joined with pk}
+      otherwise
+        set style_maps to [st_obj]
+      end
+      for each sm in style_maps
+        for each sk in (collections.keys using sm)
+          set sv to text.lower using (text.from using (sm at sk))
+          if (text.contains using sv, "javascript:") or (text.contains using sv, "expression(") or (text.contains using sv, "<script")
+            give back record {ok: no, code: "GREX-SEC-004", error: ("Unsafe CSS expression in styles." joined with sk joined with " is forbidden.")}
           end
         end
       end
@@ -140,20 +171,20 @@ make validate_grex_node using node, depth
         end
       end
     end
-    give back record {ok: yes, error: ""}
+    give back record {ok: yes, code: "", error: ""}
   catch err
-    give back record {ok: no, error: "Malformed Grex layout node"}
+    give back record {ok: no, code: "GREX-SCHEMA-001", error: "Malformed Grex layout node"}
   end
 end
 
 make validate_grex_doc using doc
   if not (doc has "templates")
-    give back record {ok: no, error: "Document missing templates object"}
+    give back record {ok: no, code: "GREX-SCHEMA-001", error: "Document missing templates object"}
   end
   set tmpls to doc at "templates"
   for each req_slot in ["home", "single", "archive", "404"]
     if not (has_map_key using tmpls, req_slot)
-      give back record {ok: no, error: "Missing required template slot: " joined with req_slot}
+      give back record {ok: no, code: "GREX-SCHEMA-001", error: ("Missing required template slot: " joined with req_slot)}
     end
   end
   for each tk in (collections.keys using tmpls)
@@ -171,7 +202,7 @@ make validate_grex_doc using doc
       end
     end
   end
-  give back record {ok: yes, error: ""}
+  give back record {ok: yes, code: "", error: ""}
 end
 
 make hex_digit_val using ch
@@ -407,6 +438,42 @@ end
 make audit_grex_tree_a11y using root_node, default_bg
   set res to check_node_a11y using root_node, default_bg, (record {last_level: 0})
   give back res
+end
+
+make resolve_doc_default_bg using doc
+  set default_bg to "#ffffff"
+  if has_map_key using doc, "theme"
+    set th to doc at "theme"
+    if has_map_key using th, "tokens"
+      set tk to th at "tokens"
+      if has_map_key using tk, "--grex-color-bg"
+        set default_bg to text.from using (tk at "--grex-color-bg")
+      end
+    end
+  end
+  give back default_bg
+end
+
+make audit_grex_doc_a11y using doc, default_bg
+  if has_map_key using doc, "templates"
+    set tmpls to doc at "templates"
+    for each tslot in (collections.keys using tmpls)
+      set ares to audit_grex_tree_a11y using (tmpls at tslot), default_bg
+      if not ares.ok
+        give back ares
+      end
+    end
+  end
+  if has_map_key using doc, "parts"
+    set parts to doc at "parts"
+    for each pslot in (collections.keys using parts)
+      set pares to audit_grex_tree_a11y using (parts at pslot), default_bg
+      if not pares.ok
+        give back pares
+      end
+    end
+  end
+  give back record {ok: yes, code: "", error: ""}
 end
 
 make load_disk_default_doc
@@ -950,6 +1017,10 @@ route "GET" "/_health"
   give back server.json using 200, record {status: "ok", engine: "grex-visual", version: "0.4.0"}
 end
 
+route "GET" "/_ready"
+  give back server.json using 200, record {status: "ready", engine: "grex-visual", version: "0.4.0"}
+end
+
 route "GET" "/"
   give back server.redirect using "/studio", 302
 end
@@ -996,7 +1067,7 @@ route "POST" "/api/studio/draft" using req
     set doc to payload at "document"
     set chk to validate_grex_doc using doc
     if not chk.ok
-      give back server.json using 422, record {ok: no, error: chk.error}
+      give back server.json using 422, record {ok: no, code: chk.code, error: chk.error}
     end
     set doc_str to json.stringify using doc
     set saved_at to upsert_stored_doc using stmts, "draft", doc_str, ""
@@ -1018,7 +1089,12 @@ route "POST" "/api/studio/publish" using req
     set doc to payload at "document"
     set chk to validate_grex_doc using doc
     if not chk.ok
-      give back server.json using 422, record {ok: no, error: chk.error}
+      give back server.json using 422, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set default_bg to resolve_doc_default_bg using doc
+    set ares to audit_grex_doc_a11y using doc, default_bg
+    if not ares.ok
+      give back server.json using 422, record {ok: no, code: ares.code, error: ares.error}
     end
     set tokens_css to ""
     set builder_css to ""
@@ -1219,29 +1295,18 @@ route "POST" "/api/mcp/layout" using req
     set draft_state to load_stored_doc using stmts, "draft"
     set draft_doc to json.parse using draft_state.doc_json
 
-    set default_bg to "#ffffff"
-    if has_map_key using draft_doc, "theme"
-      set th to draft_doc at "theme"
-      if has_map_key using th, "tokens"
-        set tk to th at "tokens"
-        if has_map_key using tk, "--grex-color-bg"
-          set default_bg to text.from using (tk at "--grex-color-bg")
-        end
-      end
-    end
+    set default_bg to resolve_doc_default_bg using draft_doc
 
     if args has "document"
       set next_doc to args at "document"
       set dchk to validate_grex_doc using next_doc
       if not dchk.ok
-        give back server.json using 422, record {ok: no, code: "GREX-SCHEMA-001", mcp_error: (record {code: -32602, message: dchk.error}), error: dchk.error}
+        give back server.json using 422, record {ok: no, code: dchk.code, mcp_error: (record {code: -32602, message: dchk.error}), error: dchk.error}
       end
-      set tmpls to next_doc at "templates"
-      for each tslot in (collections.keys using tmpls)
-        set ares to audit_grex_tree_a11y using (tmpls at tslot), default_bg
-        if not ares.ok
-          give back server.json using 422, record {ok: no, code: ares.code, mcp_error: (record {code: -32602, message: ares.error}), error: ares.error}
-        end
+      set next_bg to resolve_doc_default_bg using next_doc
+      set ares to audit_grex_doc_a11y using next_doc, next_bg
+      if not ares.ok
+        give back server.json using 422, record {ok: no, code: ares.code, mcp_error: (record {code: -32602, message: ares.error}), error: ares.error}
       end
       set next_doc_str to json.stringify using next_doc
       set now_iso to upsert_stored_doc using stmts, "draft", next_doc_str, ""
@@ -1267,7 +1332,7 @@ route "POST" "/api/mcp/layout" using req
     end
     set nchk to validate_grex_node using layout_node, 0
     if not nchk.ok
-      give back server.json using 422, record {ok: no, code: "GREX-SCHEMA-001", mcp_error: (record {code: -32602, message: nchk.error}), error: nchk.error}
+      give back server.json using 422, record {ok: no, code: nchk.code, mcp_error: (record {code: -32602, message: nchk.error}), error: nchk.error}
     end
     set a11y_chk to audit_grex_tree_a11y using layout_node, default_bg
     if not a11y_chk.ok

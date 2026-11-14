@@ -175,15 +175,28 @@ export function normalizeTemplateConditions(conditions) {
         throw new GrexSecurityError(`Template condition "${type}" requires a non-empty string value.`);
       }
     } else if (type === "taxonomy_term") {
-      if (!value || typeof value !== "object") {
+      if (typeof value === "string") {
+        const rawVal = value.trim();
+        if (!rawVal) {
+          throw new GrexSecurityError('Template condition "taxonomy_term" requires non-empty taxonomy and term.');
+        }
+        const colonIdx = rawVal.indexOf(":");
+        const taxonomy = colonIdx > 0 ? rawVal.slice(0, colonIdx).trim() : "category";
+        const term = colonIdx > 0 ? rawVal.slice(colonIdx + 1).trim() : rawVal;
+        if (!taxonomy || !term) {
+          throw new GrexSecurityError('Template condition "taxonomy_term" requires non-empty taxonomy and term.');
+        }
+        value = { taxonomy, term };
+      } else if (!value || typeof value !== "object") {
         throw new GrexSecurityError('Template condition "taxonomy_term" requires { taxonomy, term }.');
+      } else {
+        const taxonomy = String(value.taxonomy || "category").trim();
+        const term = String(value.term || value.slug || "").trim();
+        if (!taxonomy || !term) {
+          throw new GrexSecurityError('Template condition "taxonomy_term" requires non-empty taxonomy and term.');
+        }
+        value = { taxonomy, term };
       }
-      const taxonomy = String(value.taxonomy || "category").trim();
-      const term = String(value.term || value.slug || "").trim();
-      if (!taxonomy || !term) {
-        throw new GrexSecurityError('Template condition "taxonomy_term" requires non-empty taxonomy and term.');
-      }
-      value = { taxonomy, term };
     } else {
       value = null;
     }

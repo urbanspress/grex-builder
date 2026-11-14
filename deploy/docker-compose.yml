@@ -1,0 +1,163 @@
+# Grex Theme Builder — Production Hardened Docker Compose Template
+#
+# Supports two deployment profiles on GRAB v1.1.0 + Grisp + Grex JS v1.0.0:
+#   1. Default (`grex-builder-studio`): Standalone visual theme studio (`src/studio.grab`)
+#      with immutable --read-only root filesystem and writable mounts scoped strictly to:
+#        - ../storage     -> /app/storage     (SQLite DB & generated GRAB-DESIGN-SYSTEM.md)
+#        - ../public/grex -> /app/public/grex (/static/grex/ Zero-FOUC tokens.css & builder.css)
+#   2. Profile `grablab-integrated` (`grablab-cms`): GrabLab CMS v1.0.0 hosting
+#      Grex Theme Builder mounted read-only as the exclusive `mode: "visual"` theme.
+#
+# SECURITY: Never commit real passwords, signing keys, OAuth secrets, or
+# production IP addresses to Git. Supply secrets via runtime environment or .env.
+
+services:
+  grex-builder-studio:
+    image: ${GREX_BUILDER_IMAGE:-grex-builder-studio:v1.0.0}
+    container_name: grex-builder-studio
+    restart: unless-stopped
+
+    # Equivalent to `docker run --read-only`: immutable container root filesystem.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+
+    # Bind host port to loopback so a TLS reverse proxy (Caddy/Nginx) terminates HTTPS.
+    ports:
+      - "127.0.0.1:${GREX_STUDIO_PORT:-8080}:8080"
+
+    working_dir: /app
+
+    # Scoped writable volumes only; src/, views/, migrations/, theme/, and public/theme/ stay read-only.
+    volumes:
+      - ../storage:/app/storage:rw
+      - ../public/grex:/app/public/grex:rw
+      # Optional read-only production DB config override (e.g., PostgreSQL / MariaDB):
+      # - ./grab.data.prod.json:/app/grab.data.json:ro
+
+    environment:
+      GREX_STATIC_DIR: /app/public/grex
+      GREX_DESIGN_SYSTEM_PATH: /app/storage/GRAB-DESIGN-SYSTEM.md
+
+    command:
+      - grab
+      - serve
+      - --addr
+      - 0.0.0.0:8080
+      - --allow-public
+      - --allow-scripts
+      - --diagnostics
+      - production
+      - --log-format
+      - json
+      - --trusted-proxy
+      - ${GREX_TRUSTED_PROXY:-127.0.0.1}
+      - --allow-read
+      - /app
+      - --allow-write
+      - /app/public/grex
+      - --allow-write
+      - /app/storage
+      - --allow-env
+      - GREX_STATIC_DIR,GREX_DESIGN_SYSTEM_PATH
+      - --db-config
+      - /app/grab.data.json
+      - --allow-db
+      - main:read-write
+      - --platform-config
+      - /app/grab.platform.json
+      - --allow-cache
+      - studio:read-write
+      - --static
+      - /app/public
+      - --max-body-bytes
+      - "15728640"
+      - /app/src/studio.grab
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/_ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  grablab-cms:
+    profiles: ["grablab-integrated"]
+    image: ${GRABLAB_IMAGE:-grablab-cms:v1.0.0}
+    container_name: grablab-cms-grex
+    restart: unless-stopped
+
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+
+    ports:
+      - "127.0.0.1:${GRABLAB_PORT:-8081}:8080"
+
+    working_dir: /app
+
+    # Theme package and static theme UI scripts are read-only; writes stay strictly scoped.
+    volumes:
+      - ./grablab-storage:/app/storage:rw
+      - ./grablab-uploads:/app/uploads:rw
+      - ../public/grex:/app/public/grex:rw
+      - ../theme:/app/themes/grex-builder:ro
+      - ../public/theme:/app/public/themes/grex-builder:ro
+
+    environment:
+      GRABLAB_MASTER_KEY: ${GRABLAB_MASTER_KEY:?Set GRABLAB_MASTER_KEY in .env or secret manager}
+      GRABLAB_UPLOAD_DIR: /app/uploads
+      GRABLAB_MAX_UPLOAD_BYTES: ${GRABLAB_MAX_UPLOAD_BYTES:-10485760}
+      GRABLAB_ADMIN_EMAIL: ${GRABLAB_ADMIN_EMAIL:-}
+      GRABLAB_ADMIN_PASSWORD: ${GRABLAB_ADMIN_PASSWORD:-}
+      GRABLAB_ADMIN_NAME: ${GRABLAB_ADMIN_NAME:-}
+
+    command:
+      - grab
+      - serve
+      - --addr
+      - 0.0.0.0:8080
+      - --allow-public
+      - --allow-scripts
+      - --diagnostics
+      - production
+      - --log-format
+      - json
+      - --trusted-proxy
+      - ${GRABLAB_TRUSTED_PROXY:-127.0.0.1}
+      - --allow-read
+      - /app
+      - --allow-write
+      - /app/uploads
+      - --allow-env
+      - GRABLAB_MASTER_KEY,GRABLAB_UPLOAD_DIR,GRABLAB_MAX_UPLOAD_BYTES,GRABLAB_ADMIN_EMAIL,GRABLAB_ADMIN_PASSWORD,GRABLAB_ADMIN_NAME
+      - --db-config
+      - /app/grab.data.json
+      - --allow-db
+      - main:read-write
+      - --platform-config
+      - /app/grab.platform.json
+      - --allow-cache
+      - cms:read-write
+      - --allow-cache
+      - cms:limit
+      - --static
+      - /app/public
+      - --max-body-bytes
+      - "15728640"
+      - /app/src/app.grab
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/_ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

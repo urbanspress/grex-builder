@@ -38,7 +38,9 @@
 
 ---
 
-## `v1.0.0` — Production Release
-- Full end-to-end verification against **GrabLab CMS v1.0.0** and **GRAB v1.1.0** in hardened `--read-only` Docker containers (`/static/grex/` writable mount + `server.asset` `?v=<hash>`).
-- 100% passing automated unit, DOM, WCAG AA accessibility, and integration test suite.
-- Plain-English Walkthrough PDF (`docs/releases/pdf/GREX-BUILDER-v1.0.0-Guide.pdf`), checksums, and tagged GitHub Release.
+## `v1.0.0` — Production Theme Builder Release (`Approved target; specification in review`)
+**Status:** `Approved target; specification in review` ([`specifications/GREX-BUILDER-SPEC-100.md`](../specifications/GREX-BUILDER-SPEC-100.md))  
+Pre-`v1.0.0` security, semantic zero-`<div>` DOM, CSS-first zero-FOUC, asset byte-parity, and `--read-only` Docker isolation audit complete (`24/24` Node tests + `5/5` live GRAB/GrabLab E2E gates passing).
+
+- Production freeze of `theme.json` (`mode: "visual"`), `grex.elements.json` (20 elements), `createBuilderStore`, 17-command `createCommandStack`, origin-checked `GrexPreviewBridge` v1.0, `template_revisions` + zero-FOUC CSS-first Publish/Restore, `GRAB-DESIGN-SYSTEM.md` + `POST /api/mcp/layout` AI guardrails, and hardened `--read-only` Docker templates (`deploy/docker-compose.yml` + `deploy/README.md`).
+- Final `v1.0.0` promotion gate (pending owner approval of `GREX-BUILDER-SPEC-100.md`): Plain-English Walkthrough PDF, packaged theme archive + checksums, and synchronized GitHub Releases on `urbanspress/grex-builder.progress` and `urbanspress/grex-builder.stable`.
