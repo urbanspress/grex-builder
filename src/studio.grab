@@ -1,0 +1,357 @@
+use cache
+use collections
+use crypto
+use data
+use dates
+use env
+use files
+use json
+use server
+use text
+
+set db to data.open using "main"
+set studio_cache to cache.open using "studio"
+
+set stmt_get_layout to data.prepare using db, "SELECT slot_scope, status, document_json, css_hash, updated_at FROM studio_layouts WHERE slot_scope = :slot_scope AND status = :status", record {params: record {slot_scope: "text", status: "text"}, columns: record {slot_scope: "text", status: "text", document_json: "text", css_hash: "text", updated_at: "text"}}
+set stmt_insert_layout to data.prepare using db, "INSERT INTO studio_layouts (slot_scope, status, document_json, css_hash, updated_at) VALUES (:slot_scope, :status, :document_json, :css_hash, :updated_at)", record {params: record {slot_scope: "text", status: "text", document_json: "text", css_hash: "text", updated_at: "text"}, columns: record {}}
+set stmt_update_layout to data.prepare using db, "UPDATE studio_layouts SET document_json = :document_json, css_hash = :css_hash, updated_at = :updated_at WHERE slot_scope = :slot_scope AND status = :status", record {params: record {document_json: "text", css_hash: "text", updated_at: "text", slot_scope: "text", status: "text"}, columns: record {}}
+
+set stmts to record {db: db, studio_cache: studio_cache, get_layout: stmt_get_layout, insert_layout: stmt_insert_layout, update_layout: stmt_update_layout}
+
+make safe_asset_url using raw_path
+  try
+    give back server.asset using raw_path
+  catch err
+    give back raw_path
+  end
+end
+
+make is_allowed_grex_element using el_name
+  set allowed to ["Fragment", "TemplatePart", "Section", "Container", "Grid", "Stack", "Card", "Heading", "Text", "RichText", "Link", "Button", "Image", "Icon", "Form", "Input", "Select", "Tabs", "Accordion", "Modal", "Nav", "ForEach"]
+  for each item in allowed
+    if item is el_name
+      give back yes
+    end
+  end
+  give back no
+end
+
+make is_allowed_grex_tag using tag_name
+  set allowed to ["section", "main", "header", "footer", "article", "aside", "nav", "h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "a", "button", "img", "svg", "ul", "ol", "li", "form", "input", "select", "textarea", "label", "dialog", "tbody"]
+  for each item in allowed
+    if item is tag_name
+      give back yes
+    end
+  end
+  give back no
+end
+
+make is_safe_url using raw_url
+  set s to text.lower using (text.trim using (text.from using raw_url))
+  if s is ""
+    give back yes
+  end
+  if (text.starts_with using s, "javascript:") or (text.starts_with using s, "data:") or (text.starts_with using s, "vbscript:") or (text.starts_with using s, "file:")
+    give back no
+  end
+  give back yes
+end
+
+make validate_grex_node using node, depth
+  if depth is greater than 24
+    give back record {ok: no, error: "Grex layout nesting exceeds maximum depth (24)"}
+  end
+  try
+    set el_name to ""
+    if node has "element"
+      set el_name to text.from using (node at "element")
+    otherwise
+      if node has "type"
+        set el_name to text.from using (node at "type")
+      end
+    end
+    if el_name is "" or (not (is_allowed_grex_element using el_name))
+      give back record {ok: no, error: "Unsupported or unsafe Grex element: " joined with el_name}
+    end
+    if node has "tag"
+      set tag_name to text.lower using (text.from using (node at "tag"))
+      if tag_name is "div" or tag_name is "script" or tag_name is "iframe" or tag_name is "object" or tag_name is "style" or (not (is_allowed_grex_tag using tag_name))
+        give back record {ok: no, error: "Disallowed HTML tag in Grex layout: " joined with tag_name}
+      end
+    end
+    if node has "props"
+      set props to node at "props"
+      for each pk in (collections.keys using props)
+        set pkl to text.lower using pk
+        if text.starts_with using pkl, "on"
+          give back record {ok: no, error: "Inline event handler prop not allowed: " joined with pk}
+        end
+        if pkl is "innerhtml" or pkl is "outerhtml" or pkl is "dangerouslysetinnerhtml"
+          give back record {ok: no, error: "Unsafe HTML sink prop not allowed: " joined with pk}
+        end
+        if pkl is "href" or pkl is "src" or pkl is "action" or pkl is "formaction"
+          set uv to text.from using (props at pk)
+          if not (is_safe_url using uv)
+            give back record {ok: no, error: "Unsafe URL protocol in prop: " joined with pk}
+          end
+        end
+      end
+    end
+    if node has "children"
+      for each ch in (node at "children")
+        set cr to validate_grex_node using ch, (depth plus 1)
+        if not cr.ok
+          give back cr
+        end
+      end
+    end
+    give back record {ok: yes, error: ""}
+  catch err
+    give back record {ok: no, error: "Malformed Grex layout node"}
+  end
+end
+
+make has_map_key using m, key
+  if m is nothing
+    give back no
+  end
+  set ks to collections.keys using m
+  for each k in ks
+    if k is key
+      give back yes
+    end
+  end
+  give back no
+end
+
+make validate_grex_doc using doc
+  if not (doc has "templates")
+    give back record {ok: no, error: "Document missing templates object"}
+  end
+  set tmpls to doc at "templates"
+  for each req_slot in ["home", "single", "archive", "404"]
+    if not (has_map_key using tmpls, req_slot)
+      give back record {ok: no, error: "Missing required template slot: " joined with req_slot}
+    end
+  end
+  for each tk in (collections.keys using tmpls)
+    set res to validate_grex_node using (tmpls at tk), 0
+    if not res.ok
+      give back res
+    end
+  end
+  if doc has "parts"
+    set parts to doc at "parts"
+    for each pk in (collections.keys using parts)
+      set pres to validate_grex_node using (parts at pk), 0
+      if not pres.ok
+        give back pres
+      end
+    end
+  end
+  give back record {ok: yes, error: ""}
+end
+
+make load_disk_default_doc
+  set raw to files.read_text using "theme/grex.elements.json"
+  give back raw
+end
+
+make get_live_epoch using stmts
+  set cached to cache.get using stmts.studio_cache, "live_epoch"
+  if cached.found
+    give back cached.value
+  end
+  call cache.set using stmts.studio_cache, "live_epoch", 1, 86400000
+  give back 1
+end
+
+make bump_live_epoch using stmts
+  set cur to get_live_epoch using stmts
+  set nxt to cur plus 1
+  call cache.set using stmts.studio_cache, "live_epoch", nxt, 86400000
+  give back nxt
+end
+
+make get_or_create_csrf using stmts
+  set cached to cache.get using stmts.studio_cache, "studio_csrf"
+  if cached.found
+    give back cached.value
+  end
+  set tok to crypto.random_urlsafe using 32
+  call cache.set using stmts.studio_cache, "studio_csrf", tok, 86400000
+  give back tok
+end
+
+make verify_csrf using stmts, req
+  set expected to get_or_create_csrf using stmts
+  set hdr to ""
+  if req.headers has "x-csrf-token"
+    set hdr to text.from using (req.headers at "x-csrf-token")
+  end
+  if hdr is "" and (req.headers has "X-CSRF-Token")
+    set hdr to text.from using (req.headers at "X-CSRF-Token")
+  end
+  give back hdr is expected
+end
+
+make load_stored_doc using stmts, status_val
+  if status_val is "published"
+    set ep to get_live_epoch using stmts
+    set ckey to "live_doc:" joined with (text.from using ep)
+    set cached to cache.get using stmts.studio_cache, ckey
+    if cached.found
+      give back record {doc_json: cached.value.doc_json, css_hash: cached.value.css_hash, cache_hit: yes, epoch: ep}
+    end
+    set row to data.one using stmts.get_layout, record {slot_scope: "global", status: "published"}
+    set raw_doc to ""
+    set chash to ""
+    if row is not nothing
+      set raw_doc to row.document_json
+      set chash to row.css_hash
+    otherwise
+      set raw_doc to call load_disk_default_doc
+    end
+    call cache.set using stmts.studio_cache, ckey, record {doc_json: raw_doc, css_hash: chash}, 300000
+    give back record {doc_json: raw_doc, css_hash: chash, cache_hit: no, epoch: ep}
+  end
+
+  set drow to data.one using stmts.get_layout, record {slot_scope: "global", status: "draft"}
+  if drow is not nothing
+    give back record {doc_json: drow.document_json, css_hash: drow.css_hash, cache_hit: no, epoch: 0}
+  end
+  set pub_res to load_stored_doc using stmts, "published"
+  give back record {doc_json: pub_res.doc_json, css_hash: pub_res.css_hash, cache_hit: no, epoch: 0}
+end
+
+make upsert_stored_doc using stmts, status_val, doc_json, css_hash
+  set now_iso to (call dates.now_utc).iso
+  set existing to data.one using stmts.get_layout, record {slot_scope: "global", status: status_val}
+  if existing is nothing
+    call data.execute using stmts.insert_layout, record {slot_scope: "global", status: status_val, document_json: doc_json, css_hash: css_hash, updated_at: now_iso}
+  otherwise
+    call data.execute using stmts.update_layout, record {document_json: doc_json, css_hash: css_hash, updated_at: now_iso, slot_scope: "global", status: status_val}
+  end
+  give back now_iso
+end
+
+make get_static_grex_dir
+  set out to "public/grex"
+  try
+    if env.has using "GREX_STATIC_DIR"
+      set raw to text.trim using (env.get using "GREX_STATIC_DIR")
+      if raw is not ""
+        set out to raw
+      end
+    end
+  catch err
+    set out to "public/grex"
+  end
+  give back out
+end
+
+route "GET" "/_health"
+  give back server.json using 200, record {status: "ok", engine: "grex-visual"}
+end
+
+route "GET" "/"
+  give back server.redirect using "/studio", 302
+end
+
+route "GET" "/studio"
+  set csrf to get_or_create_csrf using stmts
+  set draft to load_stored_doc using stmts, "draft"
+  set tokens_url to safe_asset_url using "/static/grex/tokens.css"
+  set builder_url to safe_asset_url using "/static/grex/builder.css"
+  set studio_js_url to "/static/theme/studio.js"
+  give back server.html using "../views/studio.grab.html", record {csrf_token: csrf, doc_json: draft.doc_json, tokens_css_url: tokens_url, builder_css_url: builder_url, studio_js_url: studio_js_url}
+end
+
+route "GET" "/preview/{slot}" using req
+  set slot_name to text.from using req.params.slot
+  set mode to "published"
+  if req.query has "mode" and (text.from using (req.query at "mode")) is "draft"
+    set mode to "draft"
+  end
+  set loaded to load_stored_doc using stmts, mode
+  set tokens_url to safe_asset_url using "/static/grex/tokens.css"
+  set builder_url to safe_asset_url using "/static/grex/builder.css"
+  set theme_url to "/static/theme/theme.css"
+  set host_js_url to "/static/theme/preview-host.js"
+  give back server.html using "../views/preview.grab.html", record {slot_name: slot_name, doc_json: loaded.doc_json, tokens_css_url: tokens_url, builder_css_url: builder_url, theme_css_url: theme_url, preview_host_js_url: host_js_url}
+end
+
+route "GET" "/api/studio/state"
+  set csrf to get_or_create_csrf using stmts
+  set draft to load_stored_doc using stmts, "draft"
+  set live to load_stored_doc using stmts, "published"
+  give back server.json using 200, record {csrf_token: csrf, draft: (json.parse using draft.doc_json), published: (json.parse using live.doc_json), live_epoch: live.epoch, live_cache_hit: live.cache_hit}
+end
+
+route "POST" "/api/studio/draft" using req
+  if not (verify_csrf using stmts, req)
+    give back server.json using 403, record {ok: no, error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    if not (payload has "document")
+      give back server.json using 400, record {ok: no, error: "Missing document payload"}
+    end
+    set doc to payload at "document"
+    set chk to validate_grex_doc using doc
+    if not chk.ok
+      give back server.json using 422, record {ok: no, error: chk.error}
+    end
+    set doc_str to json.stringify using doc
+    set saved_at to upsert_stored_doc using stmts, "draft", doc_str, ""
+    give back server.json using 200, record {ok: yes, status: "draft", saved_at: saved_at}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/studio/publish" using req
+  if not (verify_csrf using stmts, req)
+    give back server.json using 403, record {ok: no, error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    if not (payload has "document")
+      give back server.json using 400, record {ok: no, error: "Missing document payload"}
+    end
+    set doc to payload at "document"
+    set chk to validate_grex_doc using doc
+    if not chk.ok
+      give back server.json using 422, record {ok: no, error: chk.error}
+    end
+    set tokens_css to ""
+    set builder_css to ""
+    if payload has "tokensCss"
+      set tokens_css to text.from using (payload at "tokensCss")
+    end
+    if payload has "builderCss"
+      set builder_css to text.from using (payload at "builderCss")
+    end
+
+    set static_dir to call get_static_grex_dir
+    if tokens_css is not ""
+      call files.write_text using (static_dir joined with "/tokens.css"), tokens_css
+    end
+    if builder_css is not ""
+      call files.write_text using (static_dir joined with "/builder.css"), builder_css
+    end
+    set css_hash to crypto.sha256_hex using builder_css
+
+    set doc_str to json.stringify using doc
+    call upsert_stored_doc using stmts, "draft", doc_str, css_hash
+    set pub_at to upsert_stored_doc using stmts, "published", doc_str, css_hash
+    set next_epoch to bump_live_epoch using stmts
+
+    set tokens_url to safe_asset_url using "/static/grex/tokens.css"
+    set builder_url to safe_asset_url using "/static/grex/builder.css"
+
+    give back server.json using 200, record {ok: yes, status: "published", published_at: pub_at, live_epoch: next_epoch, css_hash: css_hash, assets: record {tokens: tokens_url, builder: builder_url}}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end

@@ -7,15 +7,35 @@ It packages and installs as a first-class, exclusive `mode: "visual"` theme insi
 ---
 
 ## Key Architecture Pillars
-1. **Exclusive `mode: "visual"` GrabLab Theme:** Ships with `theme.json` (`"mode": "visual"`, `"engine": "grex-visual"`) — never a third-party plugin.
+1. **Exclusive `mode: "visual"` GrabLab Theme:** Ships with `theme/theme.json` (`"mode": "visual"`, `"engine": "grex-visual"`) and zero-`<div>` `.grab.html` template shells — never a third-party plugin.
 2. **Pure `Grex JS v1.0.0` Reactive Studio:** Signal-driven state (`createBuilderStore`), 20-element catalog (`grex.elements.json`), `validateElementNode()`, and live `auditAccessibility()` WCAG AA checks.
-3. **Deterministic Undo/Redo Command Stack:** Serializable mutation commands shared safely by human designers and **Groxy AI** (`grab mcp`).
-4. **Fluid Grisp / `--read-only` Docker Sync:** Live split-screen edits patch browser memory via origin-checked `GrexPreviewBridge`; **Save Draft** isolates drafts in GrabLab `use data`; **Publish** invalidates `use cache` and writes compiled CSS strictly to `/static/grex/` for `server.asset` `?v=<hash>`.
+3. **Deterministic Undo/Redo Command Stack:** Serializable mutation commands (`createCommandStack`) shared safely by human designers and **Groxy AI** (`grab mcp`).
+4. **Fluid Grisp / `--read-only` Docker Sync:** Live split-screen edits patch browser memory via origin-checked `GrexPreviewBridge`; **Save Draft** isolates drafts in `use data`; **Publish** invalidates `use cache` and writes compiled CSS strictly to `/static/grex/` for `server.asset` `?v=<hash>`.
+
+---
+
+## Quick Start (`v0.1.0`)
+
+### 1. Run Standalone Visual Studio
+```powershell
+grab migrate --db-config grab.data.json --allow-db main:migrate migrations/001_studio_schema.grab
+grab serve --allow-scripts --db-config grab.data.json --allow-db main:read-write --platform-config grab.platform.json --allow-cache studio:read-write --static public --allow-read . --allow-write public/grex src/studio.grab
+```
+Open `http://127.0.0.1:8080/studio` to edit templates, save isolated drafts, and publish compiled CSS tokens to `public/grex/`.
+
+### 2. Install in GrabLab CMS v1.0.0
+Package `theme/` (`python scripts/package_release.py --version 0.1.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (`grex-builder`) from `/admin/themes`.
+
+### 3. Run Verification Suite
+```powershell
+node --test tests/*.test.js
+python tests/integration_e2e.py
+```
 
 ---
 
 ## Current Status
-- **Active Milestone:** `v0.1` — Specification Review (`specifications/GREX-BUILDER-SPEC-001.md` drafted for approval).
+- **Latest Release:** `v0.1.0` — Visual Theme Shell, Reactive Store, Command Stack & Split-Screen Preview (**Complete**; see [Grex-Builder-v0.1.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.1.0-Guide.pdf)).
 - **Governance & Roadmap:** See [GREX-BUILDER-EXPERT.md](GREX-BUILDER-EXPERT.md), [AGENTS.md](AGENTS.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---

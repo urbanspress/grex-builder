@@ -1,0 +1,8 @@
+{
+  "connections": {
+    "main": {
+      "driver": "sqlite",
+      "path": "storage/grex-builder.db"
+    }
+  }
+}

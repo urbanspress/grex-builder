@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search: {query} — {site_title}</title>
+  <link rel="stylesheet" href="{tokens_css_url}">
+  <link rel="stylesheet" href="{theme_css_url}">
+  <!-- @hook:theme_head_meta -->
+</head>
+<body>
+  <!-- @part:header -->
+
+  <main class="grex-main" data-grex-id="search-main">
+    <section class="grex-hero" data-grex-id="search-hero" aria-label="Search Results">
+      <h1>Search: {query}</h1>
+      <p class="grex-muted">{results_summary}</p>
+    </section>
+
+    <section class="grex-feed" data-grex-id="search-results" aria-label="Matching Entries">
+      <!-- @part:query_cards -->
+    </section>
+  </main>
+
+  <!-- @part:footer -->
+</body>
+</html>

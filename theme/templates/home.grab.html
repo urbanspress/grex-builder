@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{meta_description}">
+  <title>{site_title} — {page_title}</title>
+  <link rel="stylesheet" href="{tokens_css_url}">
+  <link rel="stylesheet" href="{theme_css_url}">
+  <!-- @hook:theme_head_meta -->
+</head>
+<body>
+  <!-- @part:header -->
+
+  <main class="grex-main" data-grex-id="home-main">
+    <section class="grex-hero" data-grex-id="home-hero" aria-label="Site Hero">
+      <span class="grex-badge">Visual Theme: {theme_name}</span>
+      <h1>{site_title}</h1>
+      <p class="grex-lead">{site_tagline}</p>
+    </section>
+
+    <section class="grex-feed" data-grex-id="home-feed" aria-label="Published Content">
+      <h2>Latest Published ({published_count})</h2>
+      <p class="grex-muted">{entries_summary}</p>
+      <!-- @part:query_cards -->
+    </section>
+
+    <!-- @part:sidebar -->
+  </main>
+
+  <!-- @part:footer -->
+</body>
+</html>

@@ -1,0 +1,524 @@
+{
+  "schemaVersion": "1.0.0",
+  "engine": "grex-visual",
+  "parts": {
+    "header": {
+      "element": "Section",
+      "tag": "header",
+      "props": {
+        "id": "part-header",
+        "class": "grex-site-header"
+      },
+      "children": [
+        {
+          "element": "Container",
+          "tag": "section",
+          "props": {
+            "id": "part-header-inner",
+            "class": "grex-header-inner"
+          },
+          "children": [
+            {
+              "element": "Link",
+              "props": {
+                "id": "part-header-brand",
+                "class": "grex-brand",
+                "href": "/",
+                "text": "{site_title}"
+              }
+            },
+            {
+              "element": "Nav",
+              "tag": "nav",
+              "props": {
+                "id": "part-header-nav",
+                "class": "grex-nav",
+                "aria-label": "Primary Navigation",
+                "location": "primary"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "footer": {
+      "element": "Section",
+      "tag": "footer",
+      "props": {
+        "id": "part-footer",
+        "class": "grex-site-footer"
+      },
+      "children": [
+        {
+          "element": "Text",
+          "tag": "p",
+          "props": {
+            "id": "part-footer-credit",
+            "class": "grex-muted",
+            "text": "Powered by {theme_name} ({theme_slug}) on GrabLab CMS & Grex JS v1.0.0"
+          }
+        }
+      ]
+    },
+    "card": {
+      "element": "Card",
+      "tag": "article",
+      "props": {
+        "id": "part-card",
+        "class": "grex-entry-card"
+      },
+      "children": [
+        {
+          "element": "Text",
+          "tag": "span",
+          "props": {
+            "id": "part-card-type",
+            "class": "grex-badge",
+            "text": "{content_type_label}"
+          }
+        },
+        {
+          "element": "Heading",
+          "props": {
+            "id": "part-card-title",
+            "level": 3,
+            "text": "{title}"
+          }
+        },
+        {
+          "element": "Text",
+          "tag": "p",
+          "props": {
+            "id": "part-card-excerpt",
+            "class": "grex-muted",
+            "text": "{excerpt}"
+          }
+        },
+        {
+          "element": "Link",
+          "props": {
+            "id": "part-card-link",
+            "class": "grex-card-link",
+            "href": "{full_path}",
+            "text": "Read more"
+          }
+        }
+      ]
+    },
+    "sidebar": {
+      "element": "Section",
+      "tag": "aside",
+      "props": {
+        "id": "part-sidebar",
+        "class": "grex-sidebar",
+        "aria-label": "Site Overview"
+      },
+      "children": [
+        {
+          "element": "Heading",
+          "props": {
+            "id": "part-sidebar-heading",
+            "level": 2,
+            "text": "About {site_title}"
+          }
+        },
+        {
+          "element": "Text",
+          "tag": "p",
+          "props": {
+            "id": "part-sidebar-tagline",
+            "class": "grex-muted",
+            "text": "{site_tagline}"
+          }
+        },
+        {
+          "element": "Text",
+          "tag": "p",
+          "props": {
+            "id": "part-sidebar-count",
+            "text": "Published entries: {published_count}"
+          }
+        }
+      ]
+    }
+  },
+  "templates": {
+    "home": {
+      "element": "Fragment",
+      "children": [
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "home-header-part",
+            "name": "header"
+          }
+        },
+        {
+          "element": "Container",
+          "tag": "main",
+          "props": {
+            "id": "home-main",
+            "class": "grex-main"
+          },
+          "children": [
+            {
+              "element": "Section",
+              "tag": "section",
+              "props": {
+                "id": "home-hero",
+                "class": "grex-hero",
+                "aria-label": "Site Hero"
+              },
+              "children": [
+                {
+                  "element": "Text",
+                  "tag": "span",
+                  "props": {
+                    "id": "home-badge",
+                    "class": "grex-badge",
+                    "text": "Visual Theme: {theme_name}"
+                  }
+                },
+                {
+                  "element": "Heading",
+                  "props": {
+                    "id": "home-title",
+                    "level": 1,
+                    "text": "{site_title}"
+                  }
+                },
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "home-tagline",
+                    "class": "grex-lead",
+                    "text": "{site_tagline}"
+                  }
+                }
+              ]
+            },
+            {
+              "element": "Section",
+              "tag": "section",
+              "props": {
+                "id": "home-feed",
+                "class": "grex-feed",
+                "aria-label": "Published Content"
+              },
+              "children": [
+                {
+                  "element": "Heading",
+                  "props": {
+                    "id": "home-feed-heading",
+                    "level": 2,
+                    "text": "Latest Published ({published_count})"
+                  }
+                },
+                {
+                  "element": "ForEach",
+                  "props": {
+                    "id": "home-query-loop",
+                    "class": "grex-card-grid",
+                    "query": {
+                      "per_page": "6",
+                      "sort_by": "published_at",
+                      "sort_dir": "desc"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "element": "TemplatePart",
+              "props": {
+                "id": "home-sidebar-part",
+                "name": "sidebar"
+              }
+            }
+          ]
+        },
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "home-footer-part",
+            "name": "footer"
+          }
+        }
+      ]
+    },
+    "single": {
+      "element": "Fragment",
+      "children": [
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "single-header-part",
+            "name": "header"
+          }
+        },
+        {
+          "element": "Container",
+          "tag": "main",
+          "props": {
+            "id": "single-main",
+            "class": "grex-main"
+          },
+          "children": [
+            {
+              "element": "Card",
+              "tag": "article",
+              "props": {
+                "id": "single-article",
+                "class": "grex-article"
+              },
+              "children": [
+                {
+                  "element": "Text",
+                  "tag": "span",
+                  "props": {
+                    "id": "single-type",
+                    "class": "grex-badge",
+                    "text": "{content_type_label}"
+                  }
+                },
+                {
+                  "element": "Heading",
+                  "props": {
+                    "id": "single-title",
+                    "level": 1,
+                    "text": "{title}"
+                  }
+                },
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "single-meta",
+                    "class": "grex-muted",
+                    "text": "Published {published_at}"
+                  }
+                },
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "single-body",
+                    "class": "grex-body",
+                    "text": "{body_text}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "single-footer-part",
+            "name": "footer"
+          }
+        }
+      ]
+    },
+    "archive": {
+      "element": "Fragment",
+      "children": [
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "archive-header-part",
+            "name": "header"
+          }
+        },
+        {
+          "element": "Container",
+          "tag": "main",
+          "props": {
+            "id": "archive-main",
+            "class": "grex-main"
+          },
+          "children": [
+            {
+              "element": "Section",
+              "tag": "section",
+              "props": {
+                "id": "archive-hero",
+                "class": "grex-hero",
+                "aria-label": "Archive Header"
+              },
+              "children": [
+                {
+                  "element": "Heading",
+                  "props": {
+                    "id": "archive-title",
+                    "level": 1,
+                    "text": "{archive_label}"
+                  }
+                },
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "archive-count",
+                    "class": "grex-muted",
+                    "text": "Showing {entry_count} entries"
+                  }
+                }
+              ]
+            },
+            {
+              "element": "Section",
+              "tag": "section",
+              "props": {
+                "id": "archive-list",
+                "class": "grex-feed",
+                "aria-label": "Archive Entries"
+              },
+              "children": [
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "archive-summary",
+                    "text": "{entries_summary}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "archive-footer-part",
+            "name": "footer"
+          }
+        }
+      ]
+    },
+    "search": {
+      "element": "Fragment",
+      "children": [
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "search-header-part",
+            "name": "header"
+          }
+        },
+        {
+          "element": "Container",
+          "tag": "main",
+          "props": {
+            "id": "search-main",
+            "class": "grex-main"
+          },
+          "children": [
+            {
+              "element": "Section",
+              "tag": "section",
+              "props": {
+                "id": "search-hero",
+                "class": "grex-hero",
+                "aria-label": "Search Results"
+              },
+              "children": [
+                {
+                  "element": "Heading",
+                  "props": {
+                    "id": "search-title",
+                    "level": 1,
+                    "text": "Search: {query}"
+                  }
+                },
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "search-summary",
+                    "class": "grex-muted",
+                    "text": "{results_summary}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "search-footer-part",
+            "name": "footer"
+          }
+        }
+      ]
+    },
+    "404": {
+      "element": "Fragment",
+      "children": [
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "notfound-header-part",
+            "name": "header"
+          }
+        },
+        {
+          "element": "Container",
+          "tag": "main",
+          "props": {
+            "id": "notfound-main",
+            "class": "grex-main"
+          },
+          "children": [
+            {
+              "element": "Section",
+              "tag": "section",
+              "props": {
+                "id": "notfound-hero",
+                "class": "grex-hero",
+                "aria-label": "Not Found"
+              },
+              "children": [
+                {
+                  "element": "Heading",
+                  "props": {
+                    "id": "notfound-title",
+                    "level": 1,
+                    "text": "404 — Page Not Found"
+                  }
+                },
+                {
+                  "element": "Text",
+                  "tag": "p",
+                  "props": {
+                    "id": "notfound-path",
+                    "class": "grex-muted",
+                    "text": "No published entry exists at {requested_path}."
+                  }
+                },
+                {
+                  "element": "Link",
+                  "props": {
+                    "id": "notfound-home-link",
+                    "class": "grex-btn-link",
+                    "href": "/",
+                    "text": "Return Home"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "element": "TemplatePart",
+          "props": {
+            "id": "notfound-footer-part",
+            "name": "footer"
+          }
+        }
+      ]
+    }
+  }
+}

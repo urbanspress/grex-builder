@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.0.0",
+  "slug": "grex-builder",
+  "name": "Grex Theme Builder",
+  "version": "0.1.0",
+  "mode": "visual",
+  "engine": "grex-visual",
+  "author": "Urbanspress",
+  "grexJsVersion": "1.0.0",
+  "capabilities": [
+    "templates",
+    "parts",
+    "hooks:theme",
+    "grex:visual",
+    "assets:static"
+  ],
+  "grexElements": "grex.elements.json",
+  "templates": {
+    "home": "templates/home.grab.html",
+    "single": "templates/single.grab.html",
+    "archive": "templates/archive.grab.html",
+    "404": "templates/404.grab.html",
+    "search": "templates/search.grab.html"
+  },
+  "parts": {
+    "header": "templates/parts/header.grab.html",
+    "footer": "templates/parts/footer.grab.html",
+    "card": "templates/parts/card.grab.html",
+    "sidebar": "templates/parts/sidebar.grab.html"
+  },
+  "themeHooks": [
+    {
+      "hook": "theme:head_meta",
+      "priority": 5,
+      "handler": "theme_meta_brand"
+    },
+    {
+      "hook": "theme:before_render",
+      "priority": 10,
+      "handler": "theme_before_render_badge"
+    }
+  ],
+  "assets": {
+    "styles": [
+      "assets/theme.css",
+      "assets/builder.css"
+    ],
+    "scripts": [
+      "assets/grex.js",
+      "assets/studio.js"
+    ]
+  }
+}

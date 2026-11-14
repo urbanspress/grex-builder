@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "caches": {
+    "studio": {
+      "driver": "memory",
+      "namespace": "grex-builder",
+      "max_keys": 5000,
+      "max_bytes": 16777216
+    }
+  }
+}

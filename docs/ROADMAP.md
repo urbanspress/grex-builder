@@ -4,7 +4,7 @@
 
 ---
 
-## `v0.1` — Visual Theme Shell, Reactive Store & Split-Screen Preview (Spec Drafted)
+## `v0.1` — Visual Theme Shell, Reactive Store & Split-Screen Preview (Complete — `v0.1.0`)
 - **Exclusive `mode: "visual"` Theme Package:** Valid GrabLab `theme.json` (`"mode": "visual"`, `"engine": "grex-visual"`) that deactivates any prior theme upon 1-click activation and takes 100% exclusive template rendering control.
 - **Reactive `Grex JS` Editor Store (`createBuilderStore`):** Signal-backed document tree, selection state, dirty/draft tracking, and `validateElementNode()` / `auditAccessibility()` live diagnostics (zero Vue/Pinia).
 - **20-Element Palette & Structure Tree:** Drag-and-drop / click-to-insert palette from `grex.elements.json` with semantic tag selection (`section`, `header`, `main`, `article`, `aside`, `footer`) and zero wrapper `<div>` bloat.

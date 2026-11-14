@@ -1,6 +1,6 @@
 # GREX-BUILDER-SPEC-001: Grex Theme Builder `v0.1` Architecture & Core Contracts
 
-**Status:** Drafted for Project Owner Approval (No Application Code Written)  
+**Status:** Complete — Implemented & Verified `v0.1.0` (`2026-11-14`)  
 **Milestone:** `v0.1` — Exclusive Visual Theme Shell, Reactive Store, Command Stack & Split-Screen Preview  
 **Upstream Baselines:**
 - **GRAB:** `v1.1.0` (`grab serve`, `grab check`, `grab format`, `grab mcp`, `server.asset`, `use cache`, `use data`)
@@ -30,17 +30,34 @@
 
 ## 2. Exclusive `mode: "visual"` GrabLab Theme Package
 
-Per `GRABLAB-SPEC-100` Section 3, `grex-builder` ships as a theme directory `themes/grex-builder/` (never a plugin):
+Per `GRABLAB-SPEC-100` Section 3, `grex-builder` ships as an installable theme package directory `theme/` (installed to GrabLab `themes/grex-builder/`, never a plugin):
 
 ```text
-themes/grex-builder/
+theme/
 ├── theme.json              # Exclusive visual theme manifest
 ├── grex.elements.json      # Validated default slot trees (home, single, archive, 404, search, parts)
+├── templates/              # Clean zero-<div> .grab.html template shells
+│   ├── home.grab.html
+│   ├── single.grab.html
+│   ├── archive.grab.html
+│   ├── search.grab.html
+│   ├── 404.grab.html
+│   └── parts/
+│       ├── header.grab.html
+│       ├── footer.grab.html
+│       ├── card.grab.html
+│       └── sidebar.grab.html
 └── assets/
+    ├── grex.js             # Grex JS v1.0.0 runtime ES module
+    ├── tokens.css          # Base --grex-* tokens
+    ├── theme.css           # Visual site baseline semantic CSS
     ├── builder.css         # Studio UI styles (semantic CSS, zero wrapper div assumptions)
-    ├── studio.js           # Grex JS v1.0.0 studio entrypoint (ES module)
-    ├── store.js            # createBuilderStore + deterministic command stack
-    └── preview-host.js     # GrexPreviewBridge receiver for split-screen preview iframe
+    ├── schema.js           # Grex JS <-> GrabLab node normalizer & validator
+    ├── commands.js         # Deterministic JSON-serializable undo/redo command stack
+    ├── store.js            # createBuilderStore (Grex JS signals)
+    ├── preview-bridge.js   # GrexPreviewBridge host & studio client helpers
+    ├── preview-host.js     # Split-screen preview iframe entrypoint
+    └── studio.js           # Grex JS v1.0.0 split-screen studio UI
 ```
 
 ### 2.1 `theme.json` Contract
@@ -52,6 +69,8 @@ themes/grex-builder/
   "version": "0.1.0",
   "mode": "visual",
   "engine": "grex-visual",
+  "author": "Urbanspress",
+  "grexJsVersion": "1.0.0",
   "capabilities": [
     "templates",
     "parts",
@@ -60,9 +79,34 @@ themes/grex-builder/
     "assets:static"
   ],
   "grexElements": "grex.elements.json",
-  "themeHooks": {
-    "theme:head_meta": "theme_meta_brand",
-    "theme:before_render": "theme_before_render_badge"
+  "templates": {
+    "home": "templates/home.grab.html",
+    "single": "templates/single.grab.html",
+    "archive": "templates/archive.grab.html",
+    "404": "templates/404.grab.html",
+    "search": "templates/search.grab.html"
+  },
+  "parts": {
+    "header": "templates/parts/header.grab.html",
+    "footer": "templates/parts/footer.grab.html",
+    "card": "templates/parts/card.grab.html",
+    "sidebar": "templates/parts/sidebar.grab.html"
+  },
+  "themeHooks": [
+    {
+      "hook": "theme:head_meta",
+      "priority": 5,
+      "handler": "theme_meta_brand"
+    },
+    {
+      "hook": "theme:before_render",
+      "priority": 10,
+      "handler": "theme_before_render_badge"
+    }
+  ],
+  "assets": {
+    "styles": ["assets/theme.css", "assets/builder.css"],
+    "scripts": ["assets/grex.js", "assets/studio.js"]
   }
 }
 ```

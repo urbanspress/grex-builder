@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{meta_description}">
+  <title>{archive_label} — {site_title}</title>
+  <link rel="stylesheet" href="{tokens_css_url}">
+  <link rel="stylesheet" href="{theme_css_url}">
+  <!-- @hook:theme_head_meta -->
+</head>
+<body>
+  <!-- @part:header -->
+
+  <main class="grex-main" data-grex-id="archive-main">
+    <section class="grex-hero" data-grex-id="archive-hero" aria-label="Archive Header">
+      <span class="grex-badge">Archive: /{archive_slug}</span>
+      <h1>{archive_label}</h1>
+      <p class="grex-muted">Showing {entry_count} published entries</p>
+    </section>
+
+    <section class="grex-feed" data-grex-id="archive-list" aria-label="Archive Entries">
+      <p class="grex-muted">{entries_summary}</p>
+      <!-- @part:query_cards -->
+    </section>
+  </main>
+
+  <!-- @part:footer -->
+</body>
+</html>

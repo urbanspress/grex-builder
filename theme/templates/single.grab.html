@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{meta_description}">
+  <title>{meta_title} — {site_title}</title>
+  <link rel="stylesheet" href="{tokens_css_url}">
+  <link rel="stylesheet" href="{theme_css_url}">
+  <!-- @hook:theme_head_meta -->
+</head>
+<body>
+  <!-- @part:header -->
+
+  <main class="grex-main" data-grex-id="single-main">
+    <article class="grex-article" data-grex-id="single-article">
+      <span class="grex-badge">{content_type_label}</span>
+      <h1>{title}</h1>
+      <p class="grex-muted">Published <time datetime="{published_at}">{published_at}</time> &middot; {full_path}</p>
+      <section class="grex-body" data-grex-id="single-body">
+        <p>{body_text}</p>
+      </section>
+      <p class="grex-muted">{custom_fields_summary}</p>
+    </article>
+  </main>
+
+  <!-- @part:footer -->
+</body>
+</html>

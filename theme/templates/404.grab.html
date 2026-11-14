@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>404 Not Found — {site_title}</title>
+  <link rel="stylesheet" href="{tokens_css_url}">
+  <link rel="stylesheet" href="{theme_css_url}">
+  <!-- @hook:theme_head_meta -->
+</head>
+<body>
+  <!-- @part:header -->
+
+  <main class="grex-main" data-grex-id="notfound-main">
+    <section class="grex-hero" data-grex-id="notfound-hero" aria-label="Not Found">
+      <h1>404 — Page Not Found</h1>
+      <p class="grex-muted">No published entry exists at {requested_path}.</p>
+      <a class="grex-btn-link" href="/">Return Home</a>
+    </section>
+  </main>
+
+  <!-- @part:footer -->
+</body>
+</html>
