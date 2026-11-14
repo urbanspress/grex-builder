@@ -270,7 +270,7 @@ test("Save Draft isolates changes while Publish enforces WCAG AA gate and compil
   assert.equal(store.hasUnpublishedChanges.get(), false);
   assert.match(publishedPayloads[0].tokensCss, /:focus-visible/);
   assert.match(publishedPayloads[0].builderCss, /\.grex-el-home-hero/);
-  assert.match(publishedPayloads[0].builderCss, /@media \(max-width: 640px\)/);
+  assert.match(publishedPayloads[0].builderCss, /@media \(max-width: 767px\)/);
 
   // Confirm low-contrast color error also blocks publish
   store.updateNodeStyles("home-title", { base: { color: "#cbd5e1", backgroundColor: "#ffffff" } });

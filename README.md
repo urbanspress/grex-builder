@@ -1,7 +1,7 @@
 # Grex Theme Builder (`grex-builder`)
 
-![Built with GRAB v1.1.0](https://img.shields.io/badge/Built%20with-GRAB%20v1.1.0-10B981?style=for-the-badge&labelColor=0F172A&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzEwQjk4MSIgZD0iTTEyIDJMNCA1LjV2Ni41YzAgNS4yIDMuNCA5LjkgOCAxMS41IDQuNi0xLjYgOC02LjMgOC0xMS41VjUuNUwxMiAyeiIvPjxwYXRoIGZpbGw9IiMzNEQzOTkiIGQ9Ik0xMiAyTDQgNS41djYuNWg4VjJ6Ii8+PHBhdGggZmlsbD0iIzA1OTY2OSIgZD0iTTEyIDEydjExLjVjNC42LTEuNiA4LTYuMyA4LTExLjVoLTh6Ii8+PHBhdGggZmlsbD0iI0ZGRkZGRiIgZmlsbC1vcGFjaXR5PSIwLjI4IiBkPSJNMTIgMmw4IDMuNUwxMiAxMiA0IDUuNSAxMiAyeiIvPjwvc3ZnPg==)
-![Powered by Grex JS v1.0.0](https://img.shields.io/badge/Powered%20by-Grex%20JS%20v1.0.0-10B981?style=for-the-badge&labelColor=0F172A&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzEwQjk4MSIgZD0iTTEyIDJMNCA1LjV2Ni41YzAgNS4yIDMuNCA5LjkgOCAxMS41IDQuNi0xLjYgOC02LjMgOC0xMS41VjUuNUwxMiAyeiIvPjxwYXRoIGZpbGw9IiMzNEQzOTkiIGQ9Ik0xMiAyTDQgNS41djYuNWg4VjJ6Ii8+PHBhdGggZmlsbD0iIzA1OTY2OSIgZD0iTTEyIDEydjExLjVjNC42LTEuNiA4LTYuMyA4LTExLjVoLTh6Ii8+PHBhdGggZmlsbD0iI0ZGRkZGRiIgZmlsbC1vcGFjaXR5PSIwLjI4IiBkPSJNMTIgMmw4IDMuNUwxMiAxMiA0IDUuNSAxMiAyeiIvPjwvc3ZnPg==)
+![Built with GRAB v1.1.0](docs/badges/built-with-grab.svg)
+![Powered by Grex JS v1.0.0](docs/badges/powered-by-grex-js.svg)
 
 **Grex Theme Builder** is Step 3 of the Post-1.0 **GRAB Ecosystem** — a responsive-first visual page and conditional theme builder powered purely by **GRAB v1.1.0**, **GrabLab CMS v1.0.0**, and **Grex JS v1.0.0** (zero Vue, Pinia, Node, Webpack, or Vite bloat).
 
@@ -17,17 +17,17 @@ It packages and installs as a first-class, exclusive `mode: "visual"` theme insi
 
 ---
 
-## Quick Start (`v0.1.0`)
+## Quick Start (`v0.2.0`)
 
 ### 1. Run Standalone Visual Studio
 ```powershell
 grab migrate --db-config grab.data.json --allow-db main:migrate migrations/001_studio_schema.grab
 grab serve --allow-scripts --db-config grab.data.json --allow-db main:read-write --platform-config grab.platform.json --allow-cache studio:read-write --static public --allow-read . --allow-write public/grex src/studio.grab
 ```
-Open `http://127.0.0.1:8080/studio` to edit templates, save isolated drafts, and publish compiled CSS tokens to `public/grex/`.
+Open `http://127.0.0.1:8080/studio` to edit templates, global `--grex-*` theme tokens, reusable `.grex-c-*` classes, and responsive breakpoints, then publish compiled CSS to `public/grex/`.
 
 ### 2. Install in GrabLab CMS v1.0.0
-Package `theme/` (`python scripts/package_release.py --version 0.1.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (`grex-builder`) from `/admin/themes`.
+Package `theme/` (`python scripts/package_release.py --version 0.2.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (`grex-builder`) from `/admin/themes`.
 
 ### 3. Run Verification Suite
 ```powershell
@@ -38,7 +38,7 @@ python tests/integration_e2e.py
 ---
 
 ## Current Status
-- **Latest Release:** `v0.1.0` — Visual Theme Shell, Reactive Store, Command Stack & Split-Screen Preview (**Complete**; see [Grex-Builder-v0.1.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.1.0-Guide.pdf)).
+- **Latest Release:** `v0.2.0` — Global Theme Token Studio (`createTheme`), Bricks-Style Reusable Class Manager (`createClassManager`), Responsive Breakpoints, & Structured Visual Inspector (**Complete**; see [Grex-Builder-v0.2.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.2.0-Guide.pdf)).
 - **Governance & Roadmap:** See [GREX-BUILDER-EXPERT.md](GREX-BUILDER-EXPERT.md), [AGENTS.md](AGENTS.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---

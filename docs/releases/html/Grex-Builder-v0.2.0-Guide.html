@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Grex Theme Builder v0.2.0 — Plain-English Release Guide</title>
+  <style>
+  @page { size: letter; margin: 0.65in 0.72in; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    color: #0f172a;
+    background: #ffffff;
+    line-height: 1.56;
+    font-size: 10.2pt;
+    margin: 0;
+  }
+  .cover {
+    border-bottom: 3px solid #1d4ed8;
+    padding-bottom: 14pt;
+    margin-bottom: 18pt;
+  }
+  .badge {
+    display: inline-block;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 999px;
+    padding: 3pt 10pt;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  h1 {
+    font-size: 22pt;
+    line-height: 1.18;
+    margin: 10pt 0 6pt 0;
+    color: #0f172a;
+  }
+  .subtitle {
+    font-size: 11pt;
+    color: #475569;
+    margin: 0 0 8pt 0;
+  }
+  .meta {
+    font-size: 9pt;
+    color: #64748b;
+  }
+  h2 {
+    font-size: 13.5pt;
+    color: #1e3a8a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4pt;
+    margin: 18pt 0 8pt 0;
+    break-after: avoid;
+  }
+  h3 {
+    font-size: 11pt;
+    color: #0f172a;
+    margin: 12pt 0 4pt 0;
+    break-after: avoid;
+  }
+  p { margin: 0 0 8pt 0; }
+  ul, ol { margin: 4pt 0 10pt 0; padding-left: 18pt; }
+  li { margin-bottom: 4pt; }
+  .callout {
+    background: #f8fafc;
+    border-left: 4px solid #1d4ed8;
+    padding: 9pt 12pt;
+    margin: 10pt 0 12pt 0;
+    border-radius: 0 6pt 6pt 0;
+    break-inside: avoid;
+  }
+  .callout strong { color: #1e3a8a; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10pt 0 14pt 0;
+    font-size: 9.2pt;
+    break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 6pt 8pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+  }
+  code {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 9pt;
+    background: #f1f5f9;
+    padding: 1pt 4pt;
+    border-radius: 3pt;
+    color: #0f172a;
+  }
+</style>
+</head>
+<body>
+  <header class="cover">
+    <span class="badge">Grex Theme Builder · Release v0.2.0</span>
+    <h1>Grex Theme Builder v0.2.0</h1>
+    <p class="subtitle">Global Theme Token Studio, Reusable Class Manager &amp; Responsive Breakpoints</p>
+    <p class="meta">
+      Built on GRAB v1.1.0 · GrabLab CMS v1.0.0 · Grex JS v1.0.0 · Pure Reactive Signals (Zero Vue/Webpack Bloat)
+    </p>
+  </header>
+
+  <section>
+    <h2>1. What&rsquo;s New in Plain English</h2>
+    <p>
+      <strong>Grex Theme Builder v0.2.0</strong> upgrades the visual studio into a complete, responsive design system.
+      Instead of styling one block at a time, you can now manage site-wide brand colors, fonts, spacing, Light &amp; Dark
+      themes, reusable CSS classes, and Desktop/Tablet/Mobile layouts—all with live WCAG AA accessibility warnings and
+      instant undo/redo.
+    </p>
+    <div class="callout">
+      <strong>Zero-FOUC &amp; 1:1 Parity:</strong> When you click <strong>Publish</strong>, the studio writes the
+      compiled <code>tokens.css</code> and <code>builder.css</code> files to <code>/static/grex/</code> <em>before</em>
+      promoting the live layout and clearing the cache—so visitors never see an unstyled flash.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Key v0.2.0 Features</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Where It Lives</th>
+          <th>What It Does for Designers</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Global Theme Token Editor</strong></td>
+          <td>Left Panel &rarr; <em>Theme Tokens</em> (<code>createTheme</code>)</td>
+          <td>Edit brand colors, typography scale, spacing scale, radii, shadows, focus rings, and independent Light/Dark modes.</td>
+        </tr>
+        <tr>
+          <td><strong>Live WCAG AA Contrast Warnings</strong></td>
+          <td><code>GREX-A11Y-001</code> in Studio &amp; Inspector</td>
+          <td>Automatically checks foreground/background color pairs in Light &amp; Dark modes and warns whenever contrast drops below <code>4.5:1</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Bricks-Style Reusable Class Manager</strong></td>
+          <td>Inspector &rarr; <em>Reusable Classes</em> (<code>createClassManager</code>)</td>
+          <td>Create, rename, duplicate, delete, and attach <code>.grex-c-*</code> classes so one edit updates matching elements across every template slot.</td>
+        </tr>
+        <tr>
+          <td><strong>Responsive Breakpoint Switcher</strong></td>
+          <td>Top Toolbar (<code>Desktop &ge; 1025px</code>, <code>Tablet &le; 1024px</code>, <code>Mobile &le; 767px</code>)</td>
+          <td>Resizes the live preview canvas and compiles deterministic media-query rules into <code>/static/grex/builder.css</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Structured Visual Inspector</strong></td>
+          <td>Box Model, Layout, Typography, Border &amp; Background</td>
+          <td>Every style edit runs as a reversible command (<code>setThemeToken</code>, <code>upsertClass</code>, <code>assignClass</code>, <code>setBreakpointStyle</code>) with full undo/redo.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Verification &amp; Quality Gates</h2>
+    <ul>
+      <li><strong>Zero Wrapper <code>&lt;div&gt;</code> Bloat:</strong> Verified across all studio panels, preview DOM, and GrabLab <code>.grab.html</code> templates.</li>
+      <li><strong>GRAB v1.1.0 Static &amp; Format Checks:</strong> All <code>.grab</code> and <code>.grab.html</code> files pass <code>grab check</code> and canonical <code>grab format</code>.</li>
+      <li><strong>Automated Test Suite:</strong> 10/10 Node unit/DOM/a11y/bridge tests and all 5 end-to-end GrabLab CMS integration gates pass at 100%.</li>
+    </ul>
+  </section>
+</body>
+</html>

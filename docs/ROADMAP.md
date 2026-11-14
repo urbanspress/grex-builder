@@ -13,7 +13,7 @@
 
 ---
 
-## `v0.2` — Bricks-Style Class/Theme Inspector & Responsive Breakpoints (`Approved target; specification in review`)
+## `v0.2` — Bricks-Style Class/Theme Inspector & Responsive Breakpoints (Complete — `v0.2.0`)
 - **Global Theme & Design Token Studio:** Visual editor for `--grex-*` colors, typography scales, spacing, radii, shadows, and light/dark modes backed by `createTheme()`.
 - **Reusable Class Manager:** Bricks-style reusable CSS classes backed by `createClassManager()` with per-class style editing and cascade preview.
 - **Visual Responsive Breakpoints:** Desktop, Tablet, Mobile, and custom breakpoint toggles with per-device style overrides compiled to `/static/grex/tokens.css` and `/static/grex/builder.css`.

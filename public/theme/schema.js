@@ -424,7 +424,13 @@ export function normalizeSlotDocument(doc) {
   const slots = {};
 
   for (const [slotName, node] of Object.entries(templates)) {
-    if (slotName === "parts" || slotName === "schemaVersion" || slotName === "engine") {
+    if (
+      slotName === "parts" ||
+      slotName === "schemaVersion" ||
+      slotName === "engine" ||
+      slotName === "theme" ||
+      slotName === "classes"
+    ) {
       continue;
     }
     if (node && typeof node === "object" && getNodeElementType(node)) {
@@ -483,11 +489,12 @@ function stripForGrabLabExport(node) {
 }
 
 /**
- * Export normalized slot map back to GrabLab CMS `grex.elements.json` document.
+ * Export normalized slot map (plus optional v0.2 theme & classes) back to GrabLab CMS `grex.elements.json` document.
  * @param {Record<string, object>} slots
+ * @param {{ theme?: object, classes?: Record<string, object> }} [extra]
  * @returns {object}
  */
-export function exportGrabLabDocument(slots) {
+export function exportGrabLabDocument(slots, extra = {}) {
   const templates = {};
   const parts = {};
   for (const [key, node] of Object.entries(slots || {})) {
@@ -500,12 +507,54 @@ export function exportGrabLabDocument(slots) {
       templates[key] = stripForGrabLabExport(node);
     }
   }
-  return {
+  const doc = {
     schemaVersion: "1.0.0",
     engine: "grex-visual",
     parts,
     templates,
   };
+  if (extra && extra.theme && typeof extra.theme === "object") {
+    doc.theme = cloneJson(extra.theme);
+  }
+  if (extra && extra.classes && typeof extra.classes === "object" && Object.keys(extra.classes).length > 0) {
+    doc.classes = cloneJson(extra.classes);
+  }
+  return doc;
+}
+
+/**
+ * Extract clean `.grex-c-*` reusable class names attached to a node.
+ * @param {object} node
+ * @param {string} [prefix]
+ * @returns {string[]}
+ */
+export function getNodeGrexClasses(node, prefix = "grex-c-") {
+  if (!node || typeof node !== "object") {
+    return [];
+  }
+  const rawClass = String(node.props?.class || node.attrs?.class || "").trim();
+  const tokens = rawClass ? rawClass.split(/\s+/).filter(Boolean) : [];
+  const out = [];
+  const seen = new Set();
+  for (const tok of tokens) {
+    if (tok.startsWith(prefix)) {
+      const clean = tok.slice(prefix.length);
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        out.push(clean);
+      }
+    }
+  }
+  if (Array.isArray(node.classes)) {
+    for (const c of node.classes) {
+      const clean = String(c || "").replace(new RegExp(`^${prefix}`), "").trim();
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        out.push(clean);
+      }
+    }
+  }
+  return out;
 }
 
 /**

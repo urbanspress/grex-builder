@@ -199,3 +199,76 @@ body.grex-studio-body {
 .grex-diag-list .is-warning {
   color: #92400e;
 }
+
+.grex-breakpoint-nav,
+.grex-left-tabs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.grex-bp-btn.is-active,
+.grex-tab-btn.is-active {
+  background: #047857;
+  color: #ffffff;
+  border-color: #047857;
+}
+
+.grex-viewport-badge {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.grex-studio-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.grex-preview-iframe {
+  transition: width 150ms ease;
+  max-width: 100%;
+}
+
+.grex-class-pills {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0.35rem 0;
+}
+
+.grex-class-pills li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.grex-class-pill.is-active {
+  background: #047857;
+  color: #ffffff;
+  border-color: #047857;
+}
+
+.grex-class-controls,
+.grex-active-class-banner {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0;
+}
+
+.grex-field-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}

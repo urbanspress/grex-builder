@@ -74,7 +74,9 @@ test("mountBuilderStudio renders 20-element palette, structure tree, inspector, 
   assert.ok(previewRoot.querySelector("button"), "Inserted Button should render in live preview iframe");
 
   // Edit Button text via Inspector input -> patches live preview text in browser memory
-  const textInput = studioRoot.querySelector('input[type="text"]');
+  const textInput = studioRoot
+    .querySelectorAll('input[type="text"]')
+    .find((el) => el.id && el.id.startsWith("prop-text-"));
   textInput.value = "Launch Studio";
   textInput.dispatchEvent({ type: "change" });
   assert.equal(store.selectedNode.get().props.text, "Launch Studio");

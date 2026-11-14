@@ -66,19 +66,9 @@ function assertValidAllowedOrigins(allowedOrigins) {
   return clean;
 }
 
-function applyNodeInlineStyles(domEl, node, partsMap) {
+function markNodeIds(domEl, node, partsMap) {
   if (!domEl || !node || typeof node !== "object") {
     return;
-  }
-  const baseStyles = node.styles && (node.styles.base || (!("tablet" in node.styles) && !("mobile" in node.styles) ? node.styles : null));
-  if (baseStyles && domEl.style && typeof domEl.style.setProperty === "function") {
-    for (const [rawProp, rawVal] of Object.entries(baseStyles)) {
-      const prop = normalizeStyleProperty(rawProp);
-      const val = validateTokenValue(rawVal);
-      if (val !== "") {
-        domEl.style.setProperty(prop, val);
-      }
-    }
   }
   const nid = getNodeId(node);
   if (nid && typeof domEl.setAttribute === "function") {
@@ -92,17 +82,37 @@ function applyNodeInlineStyles(domEl, node, partsMap) {
         const partName = String(child?.props?.name || "").trim();
         const partNode = partsMap[partName];
         if (partNode && domKids[domIdx]) {
-          applyNodeInlineStyles(domKids[domIdx], partNode, partsMap);
+          markNodeIds(domKids[domIdx], partNode, partsMap);
           domIdx += 1;
         }
         continue;
       }
       if (domKids[domIdx]) {
-        applyNodeInlineStyles(domKids[domIdx], child, partsMap);
+        markNodeIds(domKids[domIdx], child, partsMap);
         domIdx += 1;
       }
     }
   }
+}
+
+function upsertLiveStyleSheet(doc, fallbackParent, id, cssText) {
+  if (!doc) {
+    return;
+  }
+  const parent = doc.head || fallbackParent;
+  if (!parent || typeof doc.createElement !== "function") {
+    return;
+  }
+  let styleEl = typeof doc.getElementById === "function" ? doc.getElementById(id) : null;
+  if (!styleEl && typeof parent.querySelector === "function") {
+    styleEl = parent.querySelector(`#${id}`);
+  }
+  if (!styleEl) {
+    styleEl = doc.createElement("style");
+    styleEl.id = id;
+    parent.appendChild(styleEl);
+  }
+  styleEl.textContent = cssText || "";
 }
 
 function clearNode(el) {
@@ -139,6 +149,14 @@ export function mountPreviewHost(options) {
     slot: options.initialSlot || "home",
     slots: options.initialSlots ? cloneJson(options.initialSlots) : null,
   });
+  const styleSync = signal(
+    options.initialStyles || {
+      tokensCss: "",
+      classesCss: "",
+      elementsCss: "",
+      themeMode: "light",
+    }
+  );
   const selectedId = signal(null);
 
   let currentDispose = null;
@@ -160,7 +178,7 @@ export function mountPreviewHost(options) {
     const rendered = renderNode(grexTree, { document: doc });
     currentDispose = rendered.dispose;
 
-    applyNodeInlineStyles(rendered.element, slotNode, partsMap);
+    markNodeIds(rendered.element, slotNode, partsMap);
     root.appendChild(rendered.element);
 
     const sel = selectedId.get();
@@ -175,6 +193,17 @@ export function mountPreviewHost(options) {
       options.onRender(state.slot);
     }
   }
+
+  const stopStyleEffect = effect(() => {
+    const st = styleSync.get() || {};
+    upsertLiveStyleSheet(doc, root, "grex-live-tokens", st.tokensCss || "");
+    upsertLiveStyleSheet(doc, root, "grex-live-classes", st.classesCss || "");
+    upsertLiveStyleSheet(doc, root, "grex-live-elements", st.elementsCss || "");
+    const mode = st.themeMode === "dark" ? "dark" : "light";
+    if (doc?.documentElement && typeof doc.documentElement.setAttribute === "function") {
+      doc.documentElement.setAttribute("data-grex-theme", mode);
+    }
+  });
 
   const stopTreeEffect = effect(renderPreviewTree);
   const stopSelEffect = effect(() => {
@@ -198,6 +227,7 @@ export function mountPreviewHost(options) {
     root,
     signals: {
       treeSync,
+      styleSync,
       selectedId,
     },
     onError: options.onError,
@@ -209,10 +239,12 @@ export function mountPreviewHost(options) {
     channel: PREVIEW_CHANNEL,
     bridge,
     treeSync,
+    styleSync,
     selectedId,
     handleMessage: bridge.handleMessage,
     dispose() {
       bridge.stop();
+      stopStyleEffect();
       stopTreeEffect();
       stopSelEffect();
       if (currentDispose) {
@@ -280,6 +312,19 @@ export function createStudioPreviewClient(options) {
     });
   }
 
+  function syncStyles(stylesPayload) {
+    return send({
+      type: "patch-signal",
+      key: "styleSync",
+      value: {
+        tokensCss: stylesPayload?.tokensCss || "",
+        classesCss: stylesPayload?.classesCss || "",
+        elementsCss: stylesPayload?.elementsCss || "",
+        themeMode: stylesPayload?.themeMode === "dark" ? "dark" : "light",
+      },
+    });
+  }
+
   let stopStoreSync = null;
   if (options.store) {
     const store = options.store;
@@ -292,9 +337,20 @@ export function createStudioPreviewClient(options) {
       const sel = store.selectedNodeId.get();
       syncSelected(sel);
     });
+    const stopC = effect(() => {
+      const css = store.compiledCss.get();
+      const mode = store.activeThemeMode ? store.activeThemeMode.get() : "light";
+      syncStyles({
+        tokensCss: css.tokensCss,
+        classesCss: css.classesCss || "",
+        elementsCss: css.elementCss || "",
+        themeMode: mode,
+      });
+    });
     stopStoreSync = () => {
       stopA();
       stopB();
+      stopC();
     };
   }
 
@@ -308,6 +364,7 @@ export function createStudioPreviewClient(options) {
     patchToken,
     syncTree,
     syncSelected,
+    syncStyles,
     dispose() {
       if (stopStoreSync) {
         stopStoreSync();

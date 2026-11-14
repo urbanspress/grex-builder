@@ -4,7 +4,12 @@
  * shared identically by human designers and Groxy AI (`grab mcp`).
  */
 
-import { GrexSecurityError } from "./grex.js";
+import {
+  GrexSecurityError,
+  normalizeStyleProperty,
+  normalizeTokenName,
+  validateTokenValue,
+} from "./grex.js";
 import {
   cloneJson,
   extractPartsMap,
@@ -20,7 +25,81 @@ export const COMMAND_TYPES = Object.freeze([
   "updateProps",
   "updateStyles",
   "replaceTree",
+  "setThemeToken",
+  "upsertClass",
+  "assignClass",
+  "setBreakpointStyle",
 ]);
+
+export const VALID_BREAKPOINTS = Object.freeze(["base", "tablet", "mobile"]);
+const CLASS_PREFIX = "grex-c-";
+
+function assertValidClassSlug(name) {
+  if (typeof name !== "string" || !/^[a-z][a-z0-9_-]*$/i.test(name.trim())) {
+    throw new GrexSecurityError(`Invalid class name "${String(name)}".`);
+  }
+  return name.trim();
+}
+
+function getClassTokens(node) {
+  const raw = String(node?.props?.class || "").trim();
+  return raw ? raw.split(/\s+/).filter(Boolean) : [];
+}
+
+function setClassTokens(node, tokens) {
+  node.props = node.props || {};
+  const clean = [];
+  const seen = new Set();
+  for (const t of tokens) {
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      clean.push(t);
+    }
+  }
+  if (clean.length === 0) {
+    delete node.props.class;
+  } else {
+    node.props.class = clean.join(" ");
+  }
+}
+
+function walkSlotNodes(node, visitor) {
+  if (!node || typeof node !== "object") {
+    return;
+  }
+  visitor(node);
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      walkSlotNodes(child, visitor);
+    }
+  }
+}
+
+function normalizeBreakpointStyleMap(styles) {
+  if (!styles || typeof styles !== "object") {
+    return {};
+  }
+  const hasBp = "base" in styles || "tablet" in styles || "mobile" in styles;
+  const source = hasBp ? styles : { base: styles };
+  const out = {};
+  for (const bp of VALID_BREAKPOINTS) {
+    const bpMap = source[bp];
+    if (!bpMap || typeof bpMap !== "object") {
+      continue;
+    }
+    const cleanMap = {};
+    for (const [k, v] of Object.entries(bpMap)) {
+      if (v === null || v === undefined || v === "") {
+        continue;
+      }
+      cleanMap[normalizeStyleProperty(k)] = validateTokenValue(v);
+    }
+    if (Object.keys(cleanMap).length > 0) {
+      out[bp] = cleanMap;
+    }
+  }
+  return out;
+}
 
 export const DEFAULT_MAX_HISTORY = 200;
 
@@ -148,203 +227,489 @@ function capturePreviousStyles(currentStyles, stylesPatch) {
 }
 
 /**
- * Execute a deterministic command against a cloned `slots` map and return
- * `{ nextSlots, record }`, where `record` contains serializable `command` & `inverse`.
+ * Execute a deterministic command against `{ slots, themeConfig, classRegistry }` and return
+ * `{ nextState, nextSlots, record }`, where `record` contains serializable `command` & `inverse`.
  * Rejects invalid/unsafe mutations with `GrexSecurityError` or `Error` before returning.
  *
- * @param {Record<string, object>} slots
+ * @param {{ slots: Record<string, object>, themeConfig?: object, classRegistry?: Record<string, object> }} state
  * @param {object} rawCommand
  * @param {{ actor?: string }} [meta]
- * @returns {{ nextSlots: Record<string, object>, record: object }}
+ * @returns {{ nextState: { slots: Record<string, object>, themeConfig: object, classRegistry: Record<string, object> }, nextSlots: Record<string, object>, record: object }}
  */
-export function executeTreeCommand(slots, rawCommand, meta = {}) {
+export function executeBuilderCommand(state, rawCommand, meta = {}) {
   if (!rawCommand || typeof rawCommand !== "object") {
     throw new GrexSecurityError("Builder command must be a non-null object.");
   }
-  const { type, slot } = rawCommand;
+  const { type } = rawCommand;
   if (!COMMAND_TYPES.includes(type)) {
     throw new GrexSecurityError(`Unsupported builder command type "${String(type)}".`);
   }
-  if (typeof slot !== "string" || !slots || !slots[slot]) {
-    throw new GrexSecurityError(`Unknown template slot "${String(slot)}".`);
+
+  const nextSlots = cloneJson(state?.slots || {});
+  const nextThemeConfig = cloneJson(
+    state?.themeConfig || { tokens: {}, modes: { light: {}, dark: {} }, prefersColorScheme: false }
+  );
+  if (!nextThemeConfig.tokens || typeof nextThemeConfig.tokens !== "object") {
+    nextThemeConfig.tokens = {};
   }
+  if (!nextThemeConfig.modes || typeof nextThemeConfig.modes !== "object") {
+    nextThemeConfig.modes = { light: {}, dark: {} };
+  }
+  const nextClassRegistry = cloneJson(state?.classRegistry || {});
 
-  const nextSlots = cloneJson(slots);
-  const root = nextSlots[slot];
   let inverse = null;
+  let touchedSlot = null;
 
-  switch (type) {
-    case "insertNode": {
-      const normalizedNode = normalizeStudioNode(rawCommand.node);
-      const nodeId = getNodeId(normalizedNode);
-      if (findNodeLocation(root, nodeId)) {
-        throw new GrexSecurityError(`Duplicate node id "${nodeId}" in slot "${slot}".`);
-      }
-      const parentLoc = rawCommand.parentId
-        ? findNodeLocation(root, rawCommand.parentId)
-        : { node: root, parent: null, index: -1 };
-      if (!parentLoc) {
-        throw new GrexSecurityError(`Parent node "${String(rawCommand.parentId)}" not found.`);
-      }
-      const kids = ensureChildrenArray(parentLoc.node);
-      const insertIdx = clampIndex(rawCommand.index, kids.length);
-      kids.splice(insertIdx, 0, normalizedNode);
-      inverse = {
-        type: "deleteNode",
-        slot,
-        nodeId,
-      };
-      break;
+  if (
+    type === "insertNode" ||
+    type === "deleteNode" ||
+    type === "moveNode" ||
+    type === "updateProps" ||
+    type === "updateStyles" ||
+    type === "replaceTree"
+  ) {
+    const { slot } = rawCommand;
+    if (typeof slot !== "string" || !nextSlots || !nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${String(slot)}".`);
     }
+    touchedSlot = slot;
+    const root = nextSlots[slot];
 
-    case "deleteNode": {
-      const nodeId = String(rawCommand.nodeId || "");
-      const loc = findNodeLocation(root, nodeId);
-      if (!loc) {
-        throw new GrexSecurityError(`Node "${nodeId}" not found for deleteNode.`);
+    switch (type) {
+      case "insertNode": {
+        const normalizedNode = normalizeStudioNode(rawCommand.node);
+        const nodeId = getNodeId(normalizedNode);
+        if (findNodeLocation(root, nodeId)) {
+          throw new GrexSecurityError(`Duplicate node id "${nodeId}" in slot "${slot}".`);
+        }
+        const parentLoc = rawCommand.parentId
+          ? findNodeLocation(root, rawCommand.parentId)
+          : { node: root, parent: null, index: -1 };
+        if (!parentLoc) {
+          throw new GrexSecurityError(`Parent node "${String(rawCommand.parentId)}" not found.`);
+        }
+        const kids = ensureChildrenArray(parentLoc.node);
+        const insertIdx = clampIndex(rawCommand.index, kids.length);
+        kids.splice(insertIdx, 0, normalizedNode);
+        inverse = {
+          type: "deleteNode",
+          slot,
+          nodeId,
+        };
+        break;
       }
-      if (!loc.parent) {
-        throw new GrexSecurityError(`Cannot delete root container node "${nodeId}" of slot "${slot}".`);
-      }
-      const removed = cloneJson(loc.node);
-      const parentId = getNodeId(loc.parent);
-      loc.parent.children.splice(loc.index, 1);
-      inverse = {
-        type: "insertNode",
-        slot,
-        parentId,
-        index: loc.index,
-        node: removed,
-      };
-      break;
-    }
 
-    case "moveNode": {
-      const nodeId = String(rawCommand.nodeId || "");
-      const targetParentId = String(rawCommand.targetParentId || "");
-      const loc = findNodeLocation(root, nodeId);
-      if (!loc || !loc.parent) {
-        throw new GrexSecurityError(`Movable node "${nodeId}" not found.`);
+      case "deleteNode": {
+        const nodeId = String(rawCommand.nodeId || "");
+        const loc = findNodeLocation(root, nodeId);
+        if (!loc) {
+          throw new GrexSecurityError(`Node "${nodeId}" not found for deleteNode.`);
+        }
+        if (!loc.parent) {
+          throw new GrexSecurityError(`Cannot delete root container node "${nodeId}" of slot "${slot}".`);
+        }
+        const removed = cloneJson(loc.node);
+        const parentId = getNodeId(loc.parent);
+        loc.parent.children.splice(loc.index, 1);
+        inverse = {
+          type: "insertNode",
+          slot,
+          parentId,
+          index: loc.index,
+          node: removed,
+        };
+        break;
       }
-      if (nodeId === targetParentId || isDescendant(root, nodeId, targetParentId)) {
-        throw new GrexSecurityError(`Cannot move node "${nodeId}" into itself or its descendant.`);
-      }
-      const prevParentId = getNodeId(loc.parent);
-      const prevIndex = loc.index;
-      const [movedNode] = loc.parent.children.splice(loc.index, 1);
 
-      const targetLoc = findNodeLocation(root, targetParentId);
-      if (!targetLoc) {
-        throw new GrexSecurityError(`Target parent "${targetParentId}" not found.`);
-      }
-      const targetKids = ensureChildrenArray(targetLoc.node);
-      const insertIdx = clampIndex(rawCommand.targetIndex, targetKids.length);
-      targetKids.splice(insertIdx, 0, movedNode);
+      case "moveNode": {
+        const nodeId = String(rawCommand.nodeId || "");
+        const targetParentId = String(rawCommand.targetParentId || "");
+        const loc = findNodeLocation(root, nodeId);
+        if (!loc || !loc.parent) {
+          throw new GrexSecurityError(`Movable node "${nodeId}" not found.`);
+        }
+        if (nodeId === targetParentId || isDescendant(root, nodeId, targetParentId)) {
+          throw new GrexSecurityError(`Cannot move node "${nodeId}" into itself or its descendant.`);
+        }
+        const prevParentId = getNodeId(loc.parent);
+        const prevIndex = loc.index;
+        const [movedNode] = loc.parent.children.splice(loc.index, 1);
 
-      inverse = {
-        type: "moveNode",
-        slot,
-        nodeId,
-        targetParentId: prevParentId,
-        targetIndex: prevIndex,
-      };
-      break;
-    }
+        const targetLoc = findNodeLocation(root, targetParentId);
+        if (!targetLoc) {
+          throw new GrexSecurityError(`Target parent "${targetParentId}" not found.`);
+        }
+        const targetKids = ensureChildrenArray(targetLoc.node);
+        const insertIdx = clampIndex(rawCommand.targetIndex, targetKids.length);
+        targetKids.splice(insertIdx, 0, movedNode);
 
-    case "updateProps": {
-      const nodeId = String(rawCommand.nodeId || "");
-      const patch = rawCommand.patch;
-      if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-        throw new GrexSecurityError("updateProps requires a non-null patch object.");
+        inverse = {
+          type: "moveNode",
+          slot,
+          nodeId,
+          targetParentId: prevParentId,
+          targetIndex: prevIndex,
+        };
+        break;
       }
-      const loc = findNodeLocation(root, nodeId);
-      if (!loc) {
-        throw new GrexSecurityError(`Node "${nodeId}" not found for updateProps.`);
-      }
-      const prevPatch = {};
-      loc.node.props = loc.node.props || {};
-      for (const [key, val] of Object.entries(patch)) {
-        if (key === "tag") {
-          prevPatch.tag = loc.node.tag !== undefined ? loc.node.tag : null;
-          if (val === null || val === undefined || val === "") {
-            delete loc.node.tag;
+
+      case "updateProps": {
+        const nodeId = String(rawCommand.nodeId || "");
+        const patch = rawCommand.patch;
+        if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+          throw new GrexSecurityError("updateProps requires a non-null patch object.");
+        }
+        const loc = findNodeLocation(root, nodeId);
+        if (!loc) {
+          throw new GrexSecurityError(`Node "${nodeId}" not found for updateProps.`);
+        }
+        const prevPatch = {};
+        loc.node.props = loc.node.props || {};
+        for (const [key, val] of Object.entries(patch)) {
+          if (key === "tag") {
+            prevPatch.tag = loc.node.tag !== undefined ? loc.node.tag : null;
+            if (val === null || val === undefined || val === "") {
+              delete loc.node.tag;
+            } else {
+              const cleanTag = String(val).trim().toLowerCase();
+              loc.node.tag = cleanTag;
+              if ((loc.node.element === "Heading" || loc.node.type === "Heading") && /^h[1-6]$/.test(cleanTag)) {
+                prevPatch.level = loc.node.props.level !== undefined ? loc.node.props.level : null;
+                loc.node.props.level = Number(cleanTag.slice(1));
+              }
+            }
+            continue;
+          }
+          if (key === "id") {
+            throw new GrexSecurityError("Node id is immutable after insertion.");
+          }
+          prevPatch[key] = key in loc.node.props ? cloneJson(loc.node.props[key]) : null;
+          if (val === null || val === undefined) {
+            delete loc.node.props[key];
           } else {
-            const cleanTag = String(val).trim().toLowerCase();
-            loc.node.tag = cleanTag;
-            if ((loc.node.element === "Heading" || loc.node.type === "Heading") && /^h[1-6]$/.test(cleanTag)) {
-              prevPatch.level = loc.node.props.level !== undefined ? loc.node.props.level : null;
-              loc.node.props.level = Number(cleanTag.slice(1));
+            loc.node.props[key] = cloneJson(val);
+            if ((loc.node.element === "Heading" || loc.node.type === "Heading") && key === "level") {
+              const lvl = Number(val);
+              if (Number.isInteger(lvl) && lvl >= 1 && lvl <= 6 && loc.node.tag) {
+                prevPatch.tag = loc.node.tag;
+                loc.node.tag = `h${lvl}`;
+              }
             }
           }
-          continue;
         }
-        if (key === "id") {
-          throw new GrexSecurityError("Node id is immutable after insertion.");
+        inverse = {
+          type: "updateProps",
+          slot,
+          nodeId,
+          patch: prevPatch,
+        };
+        break;
+      }
+
+      case "updateStyles": {
+        const nodeId = String(rawCommand.nodeId || "");
+        const stylesPatch = rawCommand.stylesPatch;
+        if (!stylesPatch || typeof stylesPatch !== "object" || Array.isArray(stylesPatch)) {
+          throw new GrexSecurityError("updateStyles requires a non-null stylesPatch object.");
         }
-        prevPatch[key] = key in loc.node.props ? cloneJson(loc.node.props[key]) : null;
-        if (val === null || val === undefined) {
-          delete loc.node.props[key];
+        const loc = findNodeLocation(root, nodeId);
+        if (!loc) {
+          throw new GrexSecurityError(`Node "${nodeId}" not found for updateStyles.`);
+        }
+        const prevStylesPatch = capturePreviousStyles(loc.node.styles, stylesPatch);
+        const nextStyles = applyStylesPatch(loc.node.styles, stylesPatch);
+        if (Object.keys(nextStyles).length === 0) {
+          delete loc.node.styles;
         } else {
-          loc.node.props[key] = cloneJson(val);
-          if ((loc.node.element === "Heading" || loc.node.type === "Heading") && key === "level") {
-            const lvl = Number(val);
-            if (Number.isInteger(lvl) && lvl >= 1 && lvl <= 6 && loc.node.tag) {
-              prevPatch.tag = loc.node.tag;
-              loc.node.tag = `h${lvl}`;
-            }
-          }
+          loc.node.styles = nextStyles;
         }
+        inverse = {
+          type: "updateStyles",
+          slot,
+          nodeId,
+          stylesPatch: prevStylesPatch,
+        };
+        break;
+      }
+
+      case "replaceTree": {
+        const prevTree = cloneJson(root);
+        const nextTree = normalizeStudioNode(rawCommand.nextTree, slot);
+        nextSlots[slot] = nextTree;
+        inverse = {
+          type: "replaceTree",
+          slot,
+          nextTree: prevTree,
+        };
+        break;
+      }
+    }
+  } else if (type === "setThemeToken") {
+    const mode = String(rawCommand.mode || "base").toLowerCase();
+    if (!["base", "light", "dark", "preferences"].includes(mode)) {
+      throw new GrexSecurityError(`Invalid theme mode "${String(rawCommand.mode)}".`);
+    }
+    if (mode === "preferences") {
+      if (rawCommand.token !== "prefersColorScheme") {
+        throw new GrexSecurityError(`Unsupported theme preference "${String(rawCommand.token)}".`);
+      }
+      const prevPref = Boolean(nextThemeConfig.prefersColorScheme);
+      nextThemeConfig.prefersColorScheme = Boolean(rawCommand.value);
+      inverse = {
+        type: "setThemeToken",
+        mode: "preferences",
+        token: "prefersColorScheme",
+        value: prevPref,
+      };
+    } else {
+      const token = normalizeTokenName(rawCommand.token);
+      const isRemoval = rawCommand.value === null || rawCommand.value === undefined || String(rawCommand.value).trim() === "";
+      if (token === "--grex-focus-ring" && isRemoval) {
+        throw new GrexSecurityError("--grex-focus-ring cannot be removed or set to empty.");
+      }
+      const targetMap =
+        mode === "base"
+          ? nextThemeConfig.tokens
+          : (nextThemeConfig.modes[mode] = nextThemeConfig.modes[mode] || {});
+      const prevVal = token in targetMap ? targetMap[token] : null;
+      if (isRemoval) {
+        delete targetMap[token];
+      } else {
+        targetMap[token] = validateTokenValue(rawCommand.value);
       }
       inverse = {
-        type: "updateProps",
-        slot,
-        nodeId,
+        type: "setThemeToken",
+        mode,
+        token,
+        value: prevVal,
+      };
+    }
+  } else if (type === "upsertClass") {
+    const action = String(rawCommand.action || "");
+    const name = assertValidClassSlug(rawCommand.name);
+
+    switch (action) {
+      case "create": {
+        if (name in nextClassRegistry) {
+          throw new GrexSecurityError(`Class "${name}" already exists.`);
+        }
+        nextClassRegistry[name] = normalizeBreakpointStyleMap(rawCommand.styles || {});
+        inverse = {
+          type: "upsertClass",
+          action: "delete",
+          name,
+        };
+        break;
+      }
+
+      case "rename": {
+        if (!(name in nextClassRegistry)) {
+          throw new GrexSecurityError(`Class "${name}" not found for rename.`);
+        }
+        const nextName = assertValidClassSlug(rawCommand.nextName);
+        if (nextName !== name && nextName in nextClassRegistry) {
+          throw new GrexSecurityError(`Target class "${nextName}" already exists.`);
+        }
+        if (nextName !== name) {
+          nextClassRegistry[nextName] = nextClassRegistry[name];
+          delete nextClassRegistry[name];
+          const oldTok = `${CLASS_PREFIX}${name}`;
+          const newTok = `${CLASS_PREFIX}${nextName}`;
+          for (const slotRoot of Object.values(nextSlots)) {
+            walkSlotNodes(slotRoot, (node) => {
+              const toks = getClassTokens(node);
+              if (toks.includes(oldTok)) {
+                setClassTokens(
+                  node,
+                  toks.map((t) => (t === oldTok ? newTok : t))
+                );
+              }
+            });
+          }
+        }
+        inverse = {
+          type: "upsertClass",
+          action: "rename",
+          name: nextName,
+          nextName: name,
+        };
+        break;
+      }
+
+      case "duplicate": {
+        if (!(name in nextClassRegistry)) {
+          throw new GrexSecurityError(`Class "${name}" not found for duplicate.`);
+        }
+        const nextName = assertValidClassSlug(rawCommand.nextName);
+        if (nextName in nextClassRegistry) {
+          throw new GrexSecurityError(`Target class "${nextName}" already exists.`);
+        }
+        nextClassRegistry[nextName] = cloneJson(nextClassRegistry[name]);
+        inverse = {
+          type: "upsertClass",
+          action: "delete",
+          name: nextName,
+        };
+        break;
+      }
+
+      case "delete": {
+        if (!(name in nextClassRegistry)) {
+          throw new GrexSecurityError(`Class "${name}" not found for delete.`);
+        }
+        const prevStyles = cloneJson(nextClassRegistry[name]);
+        delete nextClassRegistry[name];
+        const targetTok = `${CLASS_PREFIX}${name}`;
+        const affectedNodes = [];
+        for (const [slotKey, slotRoot] of Object.entries(nextSlots)) {
+          walkSlotNodes(slotRoot, (node) => {
+            const toks = getClassTokens(node);
+            if (toks.includes(targetTok)) {
+              setClassTokens(
+                node,
+                toks.filter((t) => t !== targetTok)
+              );
+              affectedNodes.push({ slot: slotKey, nodeId: getNodeId(node) });
+            }
+          });
+        }
+        inverse = {
+          type: "upsertClass",
+          action: "restore",
+          name,
+          styles: prevStyles,
+          affectedNodes,
+        };
+        break;
+      }
+
+      case "restore": {
+        nextClassRegistry[name] = normalizeBreakpointStyleMap(rawCommand.styles || {});
+        const targetTok = `${CLASS_PREFIX}${name}`;
+        for (const ref of rawCommand.affectedNodes || []) {
+          const slotRoot = nextSlots[ref.slot];
+          const loc = slotRoot ? findNodeLocation(slotRoot, ref.nodeId) : null;
+          if (loc) {
+            const toks = getClassTokens(loc.node);
+            if (!toks.includes(targetTok)) {
+              setClassTokens(loc.node, [...toks, targetTok]);
+            }
+          }
+        }
+        inverse = {
+          type: "upsertClass",
+          action: "delete",
+          name,
+        };
+        break;
+      }
+
+      default:
+        throw new GrexSecurityError(`Unsupported upsertClass action "${action}".`);
+    }
+  } else if (type === "assignClass") {
+    const slot = String(rawCommand.slot || "");
+    const nodeId = String(rawCommand.nodeId || "");
+    const className = assertValidClassSlug(rawCommand.className);
+    const attached = Boolean(rawCommand.attached);
+    if (!nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${slot}".`);
+    }
+    touchedSlot = slot;
+    const loc = findNodeLocation(nextSlots[slot], nodeId);
+    if (!loc) {
+      throw new GrexSecurityError(`Node "${nodeId}" not found for assignClass.`);
+    }
+    const tok = `${CLASS_PREFIX}${className}`;
+    const toks = getClassTokens(loc.node);
+    const wasAttached = toks.includes(tok);
+    if (attached && !wasAttached) {
+      setClassTokens(loc.node, [...toks, tok]);
+    } else if (!attached && wasAttached) {
+      setClassTokens(
+        loc.node,
+        toks.filter((t) => t !== tok)
+      );
+    }
+    inverse = {
+      type: "assignClass",
+      slot,
+      nodeId,
+      className,
+      attached: wasAttached,
+    };
+  } else if (type === "setBreakpointStyle") {
+    const target = String(rawCommand.target || "node");
+    const breakpoint = String(rawCommand.breakpoint || "base");
+    if (!VALID_BREAKPOINTS.includes(breakpoint)) {
+      throw new GrexSecurityError(`Invalid breakpoint "${breakpoint}".`);
+    }
+    const patch = rawCommand.patch;
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+      throw new GrexSecurityError("setBreakpointStyle requires a non-null patch object.");
+    }
+
+    const normalizedPatch = {};
+    for (const [rawProp, rawVal] of Object.entries(patch)) {
+      const cleanProp = normalizeStyleProperty(rawProp);
+      if (rawVal === null || rawVal === undefined || String(rawVal).trim() === "") {
+        normalizedPatch[cleanProp] = null;
+      } else {
+        normalizedPatch[cleanProp] = validateTokenValue(rawVal);
+      }
+    }
+
+    if (target === "class") {
+      const className = assertValidClassSlug(rawCommand.className);
+      if (!(className in nextClassRegistry)) {
+        throw new GrexSecurityError(`Unregistered class "${className}" for setBreakpointStyle.`);
+      }
+      const clsStyles = cloneJson(nextClassRegistry[className] || {});
+      const prevPatch = capturePreviousStyles(clsStyles, { [breakpoint]: normalizedPatch })[breakpoint] || {};
+      const nextStyles = applyStylesPatch(clsStyles, { [breakpoint]: normalizedPatch });
+      nextClassRegistry[className] = nextStyles;
+      inverse = {
+        type: "setBreakpointStyle",
+        target: "class",
+        className,
+        breakpoint,
         patch: prevPatch,
       };
-      break;
-    }
-
-    case "updateStyles": {
+    } else if (target === "node") {
+      const slot = String(rawCommand.slot || "");
       const nodeId = String(rawCommand.nodeId || "");
-      const stylesPatch = rawCommand.stylesPatch;
-      if (!stylesPatch || typeof stylesPatch !== "object" || Array.isArray(stylesPatch)) {
-        throw new GrexSecurityError("updateStyles requires a non-null stylesPatch object.");
+      if (!nextSlots[slot]) {
+        throw new GrexSecurityError(`Unknown template slot "${slot}".`);
       }
-      const loc = findNodeLocation(root, nodeId);
+      touchedSlot = slot;
+      const loc = findNodeLocation(nextSlots[slot], nodeId);
       if (!loc) {
-        throw new GrexSecurityError(`Node "${nodeId}" not found for updateStyles.`);
+        throw new GrexSecurityError(`Node "${nodeId}" not found for setBreakpointStyle.`);
       }
-      const prevStylesPatch = capturePreviousStyles(loc.node.styles, stylesPatch);
-      const nextStyles = applyStylesPatch(loc.node.styles, stylesPatch);
+      const prevPatch = capturePreviousStyles(loc.node.styles, { [breakpoint]: normalizedPatch })[breakpoint] || {};
+      const nextStyles = applyStylesPatch(loc.node.styles, { [breakpoint]: normalizedPatch });
       if (Object.keys(nextStyles).length === 0) {
         delete loc.node.styles;
       } else {
         loc.node.styles = nextStyles;
       }
       inverse = {
-        type: "updateStyles",
+        type: "setBreakpointStyle",
+        target: "node",
         slot,
         nodeId,
-        stylesPatch: prevStylesPatch,
+        breakpoint,
+        patch: prevPatch,
       };
-      break;
-    }
-
-    case "replaceTree": {
-      const prevTree = cloneJson(root);
-      const nextTree = normalizeStudioNode(rawCommand.nextTree, slot);
-      nextSlots[slot] = nextTree;
-      inverse = {
-        type: "replaceTree",
-        slot,
-        nextTree: prevTree,
-      };
-      break;
+    } else {
+      throw new GrexSecurityError(`Unsupported setBreakpointStyle target "${target}".`);
     }
   }
 
-  const partsMap = extractPartsMap(nextSlots);
-  validateStudioNode(nextSlots[slot], partsMap);
+  if (touchedSlot) {
+    const partsMap = extractPartsMap(nextSlots);
+    validateStudioNode(nextSlots[touchedSlot], partsMap);
+  }
 
   const record = {
     command: cloneJson(rawCommand),
@@ -353,6 +718,25 @@ export function executeTreeCommand(slots, rawCommand, meta = {}) {
     timestamp: new Date().toISOString(),
   };
 
+  const nextState = {
+    slots: nextSlots,
+    themeConfig: nextThemeConfig,
+    classRegistry: nextClassRegistry,
+  };
+
+  return { nextState, nextSlots, record };
+}
+
+/**
+ * Backward-compatible v0.1 wrapper executing a tree command against `slots`.
+ *
+ * @param {Record<string, object>} slots
+ * @param {object} rawCommand
+ * @param {{ actor?: string }} [meta]
+ * @returns {{ nextSlots: Record<string, object>, record: object }}
+ */
+export function executeTreeCommand(slots, rawCommand, meta = {}) {
+  const { nextSlots, record } = executeBuilderCommand({ slots }, rawCommand, meta);
   return { nextSlots, record };
 }
 
@@ -380,30 +764,36 @@ export function createCommandStack(options = {}) {
     };
   }
 
-  function stepUndo(slots, historyState) {
+  function stepUndo(stateOrSlots, historyState) {
     const undoStack = [...(historyState?.undoStack || [])];
     if (undoStack.length === 0) {
       return null;
     }
     const entry = undoStack.pop();
-    const { nextSlots } = executeTreeCommand(slots, entry.inverse, { actor: entry.actor });
+    const isFullState = Boolean(stateOrSlots && typeof stateOrSlots === "object" && "slots" in stateOrSlots);
+    const inputState = isFullState ? stateOrSlots : { slots: stateOrSlots };
+    const { nextState, nextSlots } = executeBuilderCommand(inputState, entry.inverse, { actor: entry.actor });
     const redoStack = [...(historyState?.redoStack || []), entry];
     return {
+      nextState,
       nextSlots,
       nextHistory: { undoStack, redoStack },
       entry,
     };
   }
 
-  function stepRedo(slots, historyState) {
+  function stepRedo(stateOrSlots, historyState) {
     const redoStack = [...(historyState?.redoStack || [])];
     if (redoStack.length === 0) {
       return null;
     }
     const entry = redoStack.pop();
-    const { nextSlots } = executeTreeCommand(slots, entry.command, { actor: entry.actor });
+    const isFullState = Boolean(stateOrSlots && typeof stateOrSlots === "object" && "slots" in stateOrSlots);
+    const inputState = isFullState ? stateOrSlots : { slots: stateOrSlots };
+    const { nextState, nextSlots } = executeBuilderCommand(inputState, entry.command, { actor: entry.actor });
     const undoStack = [...(historyState?.undoStack || []), entry];
     return {
+      nextState,
       nextSlots,
       nextHistory: { undoStack, redoStack },
       entry,

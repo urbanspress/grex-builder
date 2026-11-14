@@ -242,32 +242,119 @@ def build_v010_html() -> str:
 """
 
 
+def build_v020_html() -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Grex Theme Builder v0.2.0 — Plain-English Release Guide</title>
+  <style>{CSS}</style>
+</head>
+<body>
+  <header class="cover">
+    <span class="badge">Grex Theme Builder · Release v0.2.0</span>
+    <h1>Grex Theme Builder v0.2.0</h1>
+    <p class="subtitle">Global Theme Token Studio, Reusable Class Manager &amp; Responsive Breakpoints</p>
+    <p class="meta">
+      Built on GRAB v1.1.0 · GrabLab CMS v1.0.0 · Grex JS v1.0.0 · Pure Reactive Signals (Zero Vue/Webpack Bloat)
+    </p>
+  </header>
+
+  <section>
+    <h2>1. What&rsquo;s New in Plain English</h2>
+    <p>
+      <strong>Grex Theme Builder v0.2.0</strong> upgrades the visual studio into a complete, responsive design system.
+      Instead of styling one block at a time, you can now manage site-wide brand colors, fonts, spacing, Light &amp; Dark
+      themes, reusable CSS classes, and Desktop/Tablet/Mobile layouts—all with live WCAG AA accessibility warnings and
+      instant undo/redo.
+    </p>
+    <div class="callout">
+      <strong>Zero-FOUC &amp; 1:1 Parity:</strong> When you click <strong>Publish</strong>, the studio writes the
+      compiled <code>tokens.css</code> and <code>builder.css</code> files to <code>/static/grex/</code> <em>before</em>
+      promoting the live layout and clearing the cache—so visitors never see an unstyled flash.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Key v0.2.0 Features</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Where It Lives</th>
+          <th>What It Does for Designers</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Global Theme Token Editor</strong></td>
+          <td>Left Panel &rarr; <em>Theme Tokens</em> (<code>createTheme</code>)</td>
+          <td>Edit brand colors, typography scale, spacing scale, radii, shadows, focus rings, and independent Light/Dark modes.</td>
+        </tr>
+        <tr>
+          <td><strong>Live WCAG AA Contrast Warnings</strong></td>
+          <td><code>GREX-A11Y-001</code> in Studio &amp; Inspector</td>
+          <td>Automatically checks foreground/background color pairs in Light &amp; Dark modes and warns whenever contrast drops below <code>4.5:1</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Bricks-Style Reusable Class Manager</strong></td>
+          <td>Inspector &rarr; <em>Reusable Classes</em> (<code>createClassManager</code>)</td>
+          <td>Create, rename, duplicate, delete, and attach <code>.grex-c-*</code> classes so one edit updates matching elements across every template slot.</td>
+        </tr>
+        <tr>
+          <td><strong>Responsive Breakpoint Switcher</strong></td>
+          <td>Top Toolbar (<code>Desktop &ge; 1025px</code>, <code>Tablet &le; 1024px</code>, <code>Mobile &le; 767px</code>)</td>
+          <td>Resizes the live preview canvas and compiles deterministic media-query rules into <code>/static/grex/builder.css</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Structured Visual Inspector</strong></td>
+          <td>Box Model, Layout, Typography, Border &amp; Background</td>
+          <td>Every style edit runs as a reversible command (<code>setThemeToken</code>, <code>upsertClass</code>, <code>assignClass</code>, <code>setBreakpointStyle</code>) with full undo/redo.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Verification &amp; Quality Gates</h2>
+    <ul>
+      <li><strong>Zero Wrapper <code>&lt;div&gt;</code> Bloat:</strong> Verified across all studio panels, preview DOM, and GrabLab <code>.grab.html</code> templates.</li>
+      <li><strong>GRAB v1.1.0 Static &amp; Format Checks:</strong> All <code>.grab</code> and <code>.grab.html</code> files pass <code>grab check</code> and canonical <code>grab format</code>.</li>
+      <li><strong>Automated Test Suite:</strong> 10/10 Node unit/DOM/a11y/bridge tests and all 5 end-to-end GrabLab CMS integration gates pass at 100%.</li>
+    </ul>
+  </section>
+</body>
+</html>
+"""
+
+
 def main():
     HTML_DIR.mkdir(parents=True, exist_ok=True)
     PDF_DIR.mkdir(parents=True, exist_ok=True)
-
-    html_path = HTML_DIR / "Grex-Builder-v0.1.0-Guide.html"
-    pdf_path = PDF_DIR / "Grex-Builder-v0.1.0-Guide.pdf"
-
-    html_path.write_text(build_v010_html(), encoding="utf-8")
     browser = find_browser()
-    file_url = html_path.resolve().as_uri()
-    pdf_abs = str(pdf_path.resolve())
 
-    subprocess.run(
-        [
-            browser,
-            "--headless",
-            "--disable-gpu",
-            "--no-pdf-header-footer",
-            f"--print-to-pdf={pdf_abs}",
-            file_url,
-        ],
-        check=True,
-    )
-    assert pdf_path.is_file() and pdf_path.stat().st_size > 10_000, f"PDF output invalid: {pdf_path}"
-    print(f"Generated HTML: {html_path}")
-    print(f"Generated PDF:  {pdf_path} ({pdf_path.stat().st_size:,} bytes)")
+    guides = [
+        ("Grex-Builder-v0.1.0-Guide", build_v010_html()),
+        ("Grex-Builder-v0.2.0-Guide", build_v020_html()),
+    ]
+    for stem, content in guides:
+        html_path = HTML_DIR / f"{stem}.html"
+        pdf_path = PDF_DIR / f"{stem}.pdf"
+        html_path.write_text(content, encoding="utf-8")
+        subprocess.run(
+            [
+                browser,
+                "--headless",
+                "--disable-gpu",
+                "--no-pdf-header-footer",
+                f"--print-to-pdf={str(pdf_path.resolve())}",
+                html_path.resolve().as_uri(),
+            ],
+            check=True,
+        )
+        assert pdf_path.is_file() and pdf_path.stat().st_size > 10_000, f"PDF output invalid: {pdf_path}"
+        print(f"Generated HTML: {html_path}")
+        print(f"Generated PDF:  {pdf_path} ({pdf_path.stat().st_size:,} bytes)")
 
 
 if __name__ == "__main__":

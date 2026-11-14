@@ -18,11 +18,120 @@ import {
   ELEMENT_CATALOG,
   SUPPORTED_STYLE_PROPS,
   getNodeElementType,
+  getNodeGrexClasses,
   getNodeId,
   getNodeTag,
 } from "./schema.js";
 import { findNodeLocation } from "./commands.js";
 import { createStudioPreviewClient } from "./preview-bridge.js";
+
+const THEME_TOKEN_GROUPS = [
+  {
+    title: "Brand & Surface Colors",
+    tokens: [
+      "--grex-color-primary",
+      "--grex-color-secondary",
+      "--grex-color-accent",
+      "--grex-color-bg",
+      "--grex-color-surface",
+      "--grex-color-text",
+      "--grex-color-text-muted",
+      "--grex-color-border",
+    ],
+  },
+  {
+    title: "Typography Scale",
+    tokens: [
+      "--grex-font-sans",
+      "--grex-font-heading",
+      "--grex-font-mono",
+      "--grex-text-base",
+      "--grex-text-sm",
+      "--grex-text-lg",
+      "--grex-text-xl",
+      "--grex-text-2xl",
+      "--grex-leading-normal",
+      "--grex-leading-tight",
+    ],
+  },
+  {
+    title: "Spacing Scale",
+    tokens: [
+      "--grex-space-1",
+      "--grex-space-2",
+      "--grex-space-3",
+      "--grex-space-4",
+      "--grex-space-5",
+      "--grex-space-6",
+      "--grex-space-7",
+      "--grex-space-8",
+    ],
+  },
+  {
+    title: "Radii, Shadows & Focus Ring",
+    tokens: [
+      "--grex-radius-sm",
+      "--grex-radius-md",
+      "--grex-radius-lg",
+      "--grex-shadow-sm",
+      "--grex-shadow-md",
+      "--grex-focus-ring",
+    ],
+  },
+];
+
+const INSPECTOR_STYLE_GROUPS = [
+  {
+    title: "Box Model",
+    props: [
+      ["padding", "Padding"],
+      ["padding-block", "Padding Block"],
+      ["padding-inline", "Padding Inline"],
+      ["margin", "Margin"],
+      ["margin-block", "Margin Block"],
+      ["margin-inline", "Margin Inline"],
+    ],
+  },
+  {
+    title: "Layout (Flex / Grid)",
+    props: [
+      ["display", "Display"],
+      ["flex-direction", "Flex Direction"],
+      ["justify-content", "Justify Content"],
+      ["align-items", "Align Items"],
+      ["gap", "Gap"],
+      ["grid-template-columns", "Grid Columns"],
+      ["grid-template-rows", "Grid Rows"],
+    ],
+  },
+  {
+    title: "Typography",
+    props: [
+      ["font-family", "Font Family"],
+      ["font-size", "Font Size"],
+      ["font-weight", "Font Weight"],
+      ["line-height", "Line Height"],
+      ["text-align", "Text Align"],
+      ["color", "Text Color"],
+    ],
+  },
+  {
+    title: "Border & Background",
+    props: [
+      ["background", "Background"],
+      ["background-color", "Background Color"],
+      ["border", "Border"],
+      ["border-radius", "Border Radius"],
+      ["box-shadow", "Box Shadow"],
+    ],
+  },
+];
+
+const BREAKPOINT_META = {
+  base: { label: "Desktop", badge: ">= 1025px", width: "100%" },
+  tablet: { label: "Tablet", badge: "<= 1024px", width: "768px" },
+  mobile: { label: "Mobile", badge: "<= 767px", width: "375px" },
+};
 
 function clearChildren(el) {
   while (el.firstChild) {
@@ -203,6 +312,37 @@ export function mountBuilderStudio(options) {
     },
     { document: doc }
   );
+
+  const bpNav = doc.createElement("nav");
+  bpNav.id = "grex-breakpoint-nav";
+  bpNav.className = "grex-breakpoint-nav";
+  bpNav.setAttribute("aria-label", "Responsive Breakpoints");
+  const bpButtons = {};
+  for (const [bpKey, bpInfo] of Object.entries(BREAKPOINT_META)) {
+    const bpBtn = doc.createElement("button");
+    bpBtn.type = "button";
+    bpBtn.className = "grex-bp-btn";
+    bpBtn.setAttribute("data-breakpoint", bpKey);
+    bpBtn.setAttribute("aria-label", `${bpInfo.label} (${bpInfo.badge})`);
+    setSafeText(bpBtn, `${bpInfo.label} ${bpInfo.badge}`);
+    bpBtn.addEventListener("click", () => {
+      store.setBreakpoint(bpKey);
+    });
+    bpButtons[bpKey] = bpBtn;
+    bpNav.appendChild(bpBtn);
+  }
+
+  const themeModeBtn = doc.createElement("button");
+  themeModeBtn.type = "button";
+  themeModeBtn.id = "studio-theme-mode-btn";
+  themeModeBtn.className = "grex-theme-mode-btn";
+  themeModeBtn.addEventListener("click", () => {
+    const next = store.activeThemeMode.peek() === "dark" ? "light" : "dark";
+    store.setThemeMode(next);
+  });
+
+  actionsGroup.element.appendChild(bpNav);
+  actionsGroup.element.appendChild(themeModeBtn);
   actionsGroup.element.appendChild(undoBtn.element);
   actionsGroup.element.appendChild(redoBtn.element);
   actionsGroup.element.appendChild(saveDraftBtn.element);
@@ -285,16 +425,56 @@ export function mountBuilderStudio(options) {
   structureNav.className = "grex-structure-panel";
   structureNav.setAttribute("aria-label", "Structure Tree");
 
+  const themeTokensSection = doc.createElement("section");
+  themeTokensSection.id = "grex-theme-tokens-panel";
+  themeTokensSection.className = "grex-theme-tokens-panel";
+  themeTokensSection.setAttribute("aria-label", "Global Theme Tokens");
+
+  let activeTokenEditMode = "light";
+
+  const leftTabsNav = doc.createElement("nav");
+  leftTabsNav.className = "grex-left-tabs";
+  leftTabsNav.setAttribute("aria-label", "Studio Left Panels");
+  const tabElementsBtn = doc.createElement("button");
+  tabElementsBtn.type = "button";
+  tabElementsBtn.className = "grex-tab-btn is-active";
+  setSafeText(tabElementsBtn, "Elements & Tree");
+  const tabTokensBtn = doc.createElement("button");
+  tabTokensBtn.type = "button";
+  tabTokensBtn.className = "grex-tab-btn";
+  setSafeText(tabTokensBtn, "Theme Tokens");
+
+  const showLeftTab = (which) => {
+    const isTokens = which === "tokens";
+    paletteContainer.element.hidden = isTokens;
+    structureNav.hidden = isTokens;
+    themeTokensSection.hidden = !isTokens;
+    tabElementsBtn.className = isTokens ? "grex-tab-btn" : "grex-tab-btn is-active";
+    tabTokensBtn.className = isTokens ? "grex-tab-btn is-active" : "grex-tab-btn";
+  };
+  themeTokensSection.hidden = true;
+  tabElementsBtn.addEventListener("click", () => showLeftTab("elements"));
+  tabTokensBtn.addEventListener("click", () => showLeftTab("tokens"));
+  leftTabsNav.appendChild(tabElementsBtn);
+  leftTabsNav.appendChild(tabTokensBtn);
+
   const leftAside = doc.createElement("aside");
   leftAside.className = "grex-studio-left";
-  leftAside.setAttribute("aria-label", "Palette and Structure");
+  leftAside.setAttribute("aria-label", "Palette, Structure and Theme Tokens");
+  leftAside.appendChild(leftTabsNav);
   leftAside.appendChild(paletteContainer.element);
   leftAside.appendChild(structureNav);
+  leftAside.appendChild(themeTokensSection);
 
   // --- Center Split-Screen Live Preview Pane ---
   const previewSection = doc.createElement("main");
   previewSection.className = "grex-studio-preview";
   previewSection.setAttribute("aria-label", "Live Visual Preview");
+
+  const viewportBadge = doc.createElement("span");
+  viewportBadge.id = "grex-viewport-badge";
+  viewportBadge.className = "grex-viewport-badge";
+  previewSection.appendChild(viewportBadge);
 
   const previewFrame = doc.createElement("iframe");
   previewFrame.id = "grex-preview-iframe";
@@ -324,6 +504,13 @@ export function mountBuilderStudio(options) {
       if (ev.data && ev.data.type === "preview-ready") {
         previewClient.syncTree(store.activeSlot.peek(), store.documentTree.peek());
         previewClient.syncSelected(store.selectedNodeId.peek());
+        const css = store.compiledCss.peek();
+        previewClient.syncStyles({
+          tokensCss: css.tokensCss,
+          classesCss: css.classesCss || "",
+          elementsCss: css.elementCss || "",
+          themeMode: store.activeThemeMode.peek(),
+        });
       }
     };
     window.addEventListener("message", onPreviewReady);
@@ -463,6 +650,20 @@ export function mountBuilderStudio(options) {
       undoBtn.element.disabled = !store.canUndo.get();
       redoBtn.element.disabled = !store.canRedo.get();
 
+      const bp = store.activeBreakpoint.get();
+      const bpInfo = BREAKPOINT_META[bp] || BREAKPOINT_META.base;
+      for (const [k, btn] of Object.entries(bpButtons)) {
+        btn.className = k === bp ? "grex-bp-btn is-active" : "grex-bp-btn";
+        btn.setAttribute("aria-pressed", k === bp ? "true" : "false");
+      }
+      previewFrame.style.width = bpInfo.width;
+      previewSection.setAttribute("data-breakpoint", bp);
+      setSafeText(viewportBadge, `${bpInfo.label} (${bpInfo.badge})`);
+
+      const tMode = store.activeThemeMode.get();
+      setSafeText(themeModeBtn, tMode === "dark" ? "Mode: Dark" : "Mode: Light");
+      themeModeBtn.setAttribute("data-theme-mode", tMode);
+
       const status = store.saveStatus.get();
       const dirty = store.isDirty.get();
       const err = store.lastError.get();
@@ -478,15 +679,95 @@ export function mountBuilderStudio(options) {
       setSafeText(statusBadge.element, statusText);
 
       const diag = store.validationReport.get();
+      const contrastWarns = store.contrastWarnings.get();
+      const totalWarns = diag.warnings.length + contrastWarns.length;
       setSafeText(
         a11yBadge.element,
         diag.ok
-          ? `WCAG AA: Pass (${diag.warnings.length} warnings)`
+          ? `WCAG AA: Pass (${totalWarns} warnings)`
           : `WCAG AA: ${diag.errors.length} error(s)`
       );
       a11yBadge.element.className = diag.ok
         ? "grex-studio-a11y-badge is-pass"
         : "grex-studio-a11y-badge is-fail";
+    })
+  );
+
+  disposers.push(
+    effect(() => {
+      const cfg = store.themeConfig.get();
+      const cWarnings = store.contrastWarnings.get();
+      clearChildren(themeTokensSection);
+
+      const tHeading = Heading({ props: { level: 2, text: "Theme Tokens" } }, { document: doc });
+      themeTokensSection.appendChild(tHeading.element);
+
+      const modeSelect = doc.createElement("select");
+      modeSelect.id = "grex-token-mode-select";
+      for (const [mKey, mLabel] of [
+        ["base", "Base (:root)"],
+        ["light", "Light Mode"],
+        ["dark", "Dark Mode"],
+      ]) {
+        const opt = doc.createElement("option");
+        opt.value = mKey;
+        opt.textContent = mLabel;
+        modeSelect.appendChild(opt);
+      }
+      modeSelect.value = activeTokenEditMode;
+      modeSelect.addEventListener("change", (ev) => {
+        activeTokenEditMode = ev.target.value;
+        if (activeTokenEditMode === "light" || activeTokenEditMode === "dark") {
+          store.setThemeMode(activeTokenEditMode);
+        }
+      });
+      appendLabeledField(themeTokensSection, "grex-token-mode-select", "Token Scope", modeSelect);
+
+      const prefLabel = doc.createElement("label");
+      prefLabel.className = "grex-field-inline";
+      const prefCheck = doc.createElement("input");
+      prefCheck.type = "checkbox";
+      prefCheck.checked = Boolean(cfg.prefersColorScheme);
+      prefCheck.addEventListener("change", (ev) => {
+        store.setThemeToken("preferences", "prefersColorScheme", ev.target.checked);
+      });
+      const prefSpan = doc.createElement("span");
+      setSafeText(prefSpan, "Enable @media (prefers-color-scheme: dark)");
+      prefLabel.appendChild(prefCheck);
+      prefLabel.appendChild(prefSpan);
+      themeTokensSection.appendChild(prefLabel);
+
+      if (cWarnings.length > 0) {
+        const warnList = doc.createElement("ul");
+        warnList.className = "grex-diag-list";
+        for (const w of cWarnings) {
+          const li = doc.createElement("li");
+          li.className = "is-warning";
+          setSafeText(li, `[${w.code}] ${w.message}`);
+          warnList.appendChild(li);
+        }
+        themeTokensSection.appendChild(warnList);
+      }
+
+      const activeMap =
+        activeTokenEditMode === "base"
+          ? cfg.tokens || {}
+          : { ...(cfg.tokens || {}), ...(cfg.modes?.[activeTokenEditMode] || {}) };
+
+      for (const group of THEME_TOKEN_GROUPS) {
+        const gHead = Heading({ props: { level: 3, text: group.title } }, { document: doc });
+        themeTokensSection.appendChild(gHead.element);
+        for (const tok of group.tokens) {
+          const inp = doc.createElement("input");
+          inp.type = "text";
+          inp.value = activeMap[tok] ?? "";
+          inp.setAttribute("data-token", tok);
+          inp.addEventListener("change", (ev) => {
+            store.setThemeToken(activeTokenEditMode, tok, ev.target.value);
+          });
+          appendLabeledField(themeTokensSection, `tok-${activeTokenEditMode}-${tok}`, tok, inp);
+        }
+      }
     })
   );
 
@@ -509,6 +790,10 @@ export function mountBuilderStudio(options) {
     effect(() => {
       const node = store.selectedNode.get();
       const diag = store.validationReport.get();
+      const bp = store.activeBreakpoint.get();
+      const clsReg = store.classRegistry.get();
+      const activeCls = store.activeClassName.get();
+      const cWarnings = store.contrastWarnings.get();
       clearChildren(inspectorAside);
 
       const heading = Heading({ props: { level: 2, text: "Inspector" } }, { document: doc });
@@ -526,6 +811,123 @@ export function mountBuilderStudio(options) {
           { document: doc }
         );
         inspectorAside.appendChild(summary.element);
+
+        // --- Bricks-Style Reusable Class Manager ---
+        const classBar = doc.createElement("section");
+        classBar.id = "grex-class-manager-bar";
+        classBar.className = "grex-class-manager";
+        classBar.setAttribute("aria-label", "Reusable Classes");
+        const clsHeading = Heading({ props: { level: 3, text: "Reusable Classes (.grex-c-*)" } }, { document: doc });
+        classBar.appendChild(clsHeading.element);
+
+        const attachedClasses = getNodeGrexClasses(node);
+        const pillsList = doc.createElement("ul");
+        pillsList.className = "grex-class-pills";
+        for (const clsName of attachedClasses) {
+          const li = doc.createElement("li");
+          const pillBtn = doc.createElement("button");
+          pillBtn.type = "button";
+          pillBtn.className = activeCls === clsName ? "grex-class-pill is-active" : "grex-class-pill";
+          setSafeText(pillBtn, `.grex-c-${clsName}`);
+          pillBtn.addEventListener("click", () => {
+            store.setActiveClass(activeCls === clsName ? null : clsName);
+          });
+          const detachBtn = doc.createElement("button");
+          detachBtn.type = "button";
+          detachBtn.className = "grex-class-detach";
+          detachBtn.setAttribute("aria-label", `Detach class ${clsName}`);
+          setSafeText(detachBtn, "×");
+          detachBtn.addEventListener("click", () => {
+            if (activeCls === clsName) {
+              store.setActiveClass(null);
+            }
+            store.assignClass(nid, clsName, false);
+          });
+          li.appendChild(pillBtn);
+          li.appendChild(detachBtn);
+          pillsList.appendChild(li);
+        }
+        classBar.appendChild(pillsList);
+
+        const createRow = doc.createElement("section");
+        createRow.className = "grex-class-controls";
+        const newClsInput = doc.createElement("input");
+        newClsInput.type = "text";
+        newClsInput.id = "grex-new-class-input";
+        newClsInput.placeholder = "new-class-slug";
+        newClsInput.setAttribute("aria-label", "New Class Slug");
+        const createClsBtn = doc.createElement("button");
+        createClsBtn.type = "button";
+        setSafeText(createClsBtn, "Create Class");
+        createClsBtn.addEventListener("click", () => {
+          const slug = newClsInput.value.trim();
+          if (slug) {
+            store.createClass(slug, {}, true);
+          }
+        });
+        createRow.appendChild(newClsInput);
+        createRow.appendChild(createClsBtn);
+        classBar.appendChild(createRow);
+
+        const allClassNames = Object.keys(clsReg || {});
+        if (allClassNames.length > 0) {
+          const attachRow = doc.createElement("section");
+          attachRow.className = "grex-class-controls";
+          const clsSelect = doc.createElement("select");
+          clsSelect.setAttribute("aria-label", "Attach Existing Class");
+          for (const cName of allClassNames) {
+            const opt = doc.createElement("option");
+            opt.value = cName;
+            opt.textContent = `.grex-c-${cName}`;
+            clsSelect.appendChild(opt);
+          }
+          const attachBtn = doc.createElement("button");
+          attachBtn.type = "button";
+          setSafeText(attachBtn, "Attach");
+          attachBtn.addEventListener("click", () => {
+            if (clsSelect.value) {
+              store.assignClass(nid, clsSelect.value, true);
+              store.setActiveClass(clsSelect.value);
+            }
+          });
+          attachRow.appendChild(clsSelect);
+          attachRow.appendChild(attachBtn);
+          classBar.appendChild(attachRow);
+        }
+
+        if (activeCls && clsReg[activeCls]) {
+          const activeBanner = doc.createElement("section");
+          activeBanner.className = "grex-active-class-banner";
+          const bannerTxt = Text({ props: { text: `Editing Class: .grex-c-${activeCls}` } }, { document: doc });
+          const dupBtn = doc.createElement("button");
+          dupBtn.type = "button";
+          setSafeText(dupBtn, "Duplicate");
+          dupBtn.addEventListener("click", () => {
+            let copyName = `${activeCls}-copy`;
+            let n = 2;
+            while (copyName in (store.classRegistry.peek() || {})) {
+              copyName = `${activeCls}-copy-${n}`;
+              n += 1;
+            }
+            store.duplicateClass(activeCls, copyName, true);
+          });
+          const clearClsBtn = doc.createElement("button");
+          clearClsBtn.type = "button";
+          setSafeText(clearClsBtn, "Edit Element ID");
+          clearClsBtn.addEventListener("click", () => store.setActiveClass(null));
+          const delClsBtn = doc.createElement("button");
+          delClsBtn.type = "button";
+          delClsBtn.className = "is-danger";
+          setSafeText(delClsBtn, "Delete Class");
+          delClsBtn.addEventListener("click", () => store.deleteClass(activeCls));
+
+          activeBanner.appendChild(bannerTxt.element);
+          activeBanner.appendChild(dupBtn);
+          activeBanner.appendChild(clearClsBtn);
+          activeBanner.appendChild(delClsBtn);
+          classBar.appendChild(activeBanner);
+        }
+        inspectorAside.appendChild(classBar);
 
         if (meta && meta.allowedTags.length > 0) {
           const tagSelect = doc.createElement("select");
@@ -610,25 +1012,42 @@ export function mountBuilderStudio(options) {
           appendLabeledField(inspectorAside, `prop-label-${nid}`, "Accessible Label", lblInput);
         }
 
-        const baseStyles = (node.styles && node.styles.base) || {};
-        const styleSectionHeading = Heading({ props: { level: 3, text: "Base Styles" } }, { document: doc });
+        // --- Structured Visual Style Inspector (Scoped to activeBreakpoint & Class/Node) ---
+        const styleTargetObj = activeCls && clsReg[activeCls] ? clsReg[activeCls] : (node.styles || {});
+        const bpStyles = styleTargetObj[bp] || {};
+        const baseFallbackStyles = styleTargetObj.base || {};
+        const bpInfo = BREAKPOINT_META[bp] || BREAKPOINT_META.base;
+        const targetLabel = activeCls ? `.grex-c-${activeCls}` : `#${nid}`;
+
+        const styleSectionHeading = Heading(
+          { props: { level: 3, text: `Styles (${targetLabel} · ${bpInfo.label})` } },
+          { document: doc }
+        );
         inspectorAside.appendChild(styleSectionHeading.element);
 
-        for (const [styleProp, label] of [
-          ["color", "Text Color"],
-          ["background-color", "Background Color"],
-          ["padding", "Padding"],
-          ["gap", "Gap"],
-        ]) {
-          if (SUPPORTED_STYLE_PROPS.includes(styleProp)) {
+        for (const group of INSPECTOR_STYLE_GROUPS) {
+          const grpHead = Heading({ props: { level: 4, text: group.title } }, { document: doc });
+          inspectorAside.appendChild(grpHead.element);
+          for (const [styleProp, label] of group.props) {
+            if (!SUPPORTED_STYLE_PROPS.includes(styleProp)) {
+              continue;
+            }
+            const hasOverride = bp !== "base" && styleProp in bpStyles;
+            const displayLabel = hasOverride ? `● ${label}` : label;
             const styleInput = doc.createElement("input");
             styleInput.type = "text";
-            styleInput.value = baseStyles[styleProp] ?? "";
+            styleInput.value = bpStyles[styleProp] ?? (bp !== "base" ? baseFallbackStyles[styleProp] ?? "" : "");
+            styleInput.setAttribute("data-style-prop", styleProp);
+            styleInput.setAttribute("data-breakpoint", bp);
             styleInput.addEventListener("change", (ev) => {
-              store.updateNodeStyles(nid, { [styleProp]: ev.target.value });
-              previewClient.patchStyle(nid, styleProp, ev.target.value);
+              store.setBreakpointStyle({ [styleProp]: ev.target.value });
             });
-            appendLabeledField(inspectorAside, `style-${styleProp}-${nid}`, label, styleInput);
+            appendLabeledField(
+              inspectorAside,
+              `style-${bp}-${activeCls || nid}-${styleProp}`,
+              displayLabel,
+              styleInput
+            );
           }
         }
       }
@@ -641,12 +1060,16 @@ export function mountBuilderStudio(options) {
 
       const diagList = doc.createElement("ul");
       diagList.className = "grex-diag-list";
-      if (diag.issues.length === 0) {
+      const allIssues = [
+        ...diag.issues,
+        ...cWarnings.map((w) => ({ severity: "warning", code: w.code, message: w.message })),
+      ];
+      if (allIssues.length === 0) {
         const li = doc.createElement("li");
         setSafeText(li, "All WCAG AA & Grex schema checks passed.");
         diagList.appendChild(li);
       } else {
-        for (const issue of diag.issues) {
+        for (const issue of allIssues) {
           const li = doc.createElement("li");
           li.className = issue.severity === "error" ? "is-error" : "is-warning";
           setSafeText(li, `[${issue.code}] ${issue.message}`);

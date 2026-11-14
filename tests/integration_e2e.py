@@ -310,11 +310,23 @@ def test_live_studio_server():
             )
             assert st == 422 and bad_res["ok"] is False, bad_res
 
-            # Save Draft -> draft updates, published remains untouched, live_epoch unchanged
+            # Save Draft with v0.2 theme tokens + reusable classes -> draft updates, published remains untouched
             draft_doc = json.loads(json.dumps(st0["draft"]))
             draft_doc["templates"]["home"]["children"][1]["children"][0]["children"][1]["props"]["text"] = (
                 "Draft Hero Headline"
             )
+            draft_doc["theme"] = {
+                "tokens": {"--grex-color-primary": "#047857"},
+                "modes": {"light": {"--grex-color-bg": "#f8fafc"}, "dark": {"--grex-color-bg": "#0f172a"}},
+                "prefersColorScheme": False,
+            }
+            draft_doc["classes"] = {
+                "hero-card": {
+                    "base": {"padding": "2rem"},
+                    "tablet": {"padding": "1.5rem"},
+                    "mobile": {"padding": "1rem"},
+                }
+            }
             st, _, _, _, dr_res = http_req(
                 port, "POST", "/api/studio/draft", {"document": draft_doc}, headers={"X-CSRF-Token": csrf}
             )
@@ -325,6 +337,7 @@ def test_live_studio_server():
                 st2["draft"]["templates"]["home"]["children"][1]["children"][0]["children"][1]["props"]["text"]
                 == "Draft Hero Headline"
             )
+            assert st2["draft"]["classes"]["hero-card"]["mobile"]["padding"] == "1rem"
             assert (
                 st2["published"]["templates"]["home"]["children"][1]["children"][0]["children"][1]["props"]["text"]
                 == "{site_title}"
@@ -332,8 +345,16 @@ def test_live_studio_server():
             assert st2["live_epoch"] == epoch0
 
             # Publish -> updates published, bumps live_epoch (invalidating use cache), writes /static/grex/*.css
-            marker_css = "/* published-e2e-marker */\n.grex-e2e-ok { color: #0f172a; }\n"
-            tokens_css = ":root { --grex-e2e-token: #1d4ed8; }\n"
+            marker_css = (
+                "/* published-e2e-marker */\n"
+                ".grex-c-hero-card { padding: 2rem; }\n"
+                "@media (max-width: 1024px) { .grex-c-hero-card { padding: 1.5rem; } }\n"
+                "@media (max-width: 767px) { .grex-c-hero-card { padding: 1rem; } }\n"
+            )
+            tokens_css = (
+                ":root { --grex-color-primary: #047857; }\n"
+                "[data-grex-theme=\"dark\"] { --grex-color-bg: #0f172a; }\n"
+            )
             st, _, _, _, pub_res = http_req(
                 port,
                 "POST",
@@ -349,10 +370,13 @@ def test_live_studio_server():
                 st3["published"]["templates"]["home"]["children"][1]["children"][0]["children"][1]["props"]["text"]
                 == "Draft Hero Headline"
             )
+            assert st3["published"]["classes"]["hero-card"]["tablet"]["padding"] == "1.5rem"
             assert st3["live_epoch"] == epoch0 + 1
 
             st, _, _, served_builder_css, _ = http_req(port, "GET", "/static/grex/builder.css")
             assert st == 200 and "published-e2e-marker" in served_builder_css
+            assert "@media (max-width: 1024px)" in served_builder_css
+            assert "@media (max-width: 767px)" in served_builder_css
             assert (static_grex / "tokens.css").read_text(encoding="utf-8") == tokens_css
         finally:
             proc.terminate()
