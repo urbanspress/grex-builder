@@ -38,9 +38,9 @@
 
 ---
 
-## `v1.0.0` — Production Theme Builder Release (`Approved target; specification in review`)
-**Status:** `Approved target; specification in review` ([`specifications/GREX-BUILDER-SPEC-100.md`](../specifications/GREX-BUILDER-SPEC-100.md))  
+## `v1.0.0` — Production Visual Theme & Studio Release (Complete — `v1.0.0`)
+**Status:** `Approved & Frozen — Complete` ([`specifications/GREX-BUILDER-SPEC-100.md`](../specifications/GREX-BUILDER-SPEC-100.md))  
 Pre-`v1.0.0` security, semantic zero-`<div>` DOM, CSS-first zero-FOUC, asset byte-parity, and `--read-only` Docker isolation audit complete (`24/24` Node tests + `5/5` live GRAB/GrabLab E2E gates passing).
 
-- Production freeze of `theme.json` (`mode: "visual"`), `grex.elements.json` (20 elements), `createBuilderStore`, 17-command `createCommandStack`, origin-checked `GrexPreviewBridge` v1.0, `template_revisions` + zero-FOUC CSS-first Publish/Restore, `GRAB-DESIGN-SYSTEM.md` + `POST /api/mcp/layout` AI guardrails, and hardened `--read-only` Docker templates (`deploy/docker-compose.yml` + `deploy/README.md`).
-- Final `v1.0.0` promotion gate (pending owner approval of `GREX-BUILDER-SPEC-100.md`): Plain-English Walkthrough PDF, packaged theme archive + checksums, and synchronized GitHub Releases on `urbanspress/grex-builder.progress` and `urbanspress/grex-builder.stable`.
+- Production freeze of `theme.json` (`"version": "1.0.0"`, `mode: "visual"`), `grex.elements.json` (20 elements), `createBuilderStore`, 17-command `createCommandStack`, origin-checked `GrexPreviewBridge` v1.0, `template_revisions` + zero-FOUC CSS-first Publish/Restore, `GRAB-DESIGN-SYSTEM.md` + `POST /api/mcp/layout` AI guardrails, and hardened `--read-only` Docker templates (`deploy/docker-compose.yml` + `deploy/README.md`).
+- Synchronized `v1.0.0` release assets published to `urbanspress/grex-builder.progress` and `urbanspress/grex-builder.stable`: [Grex-Builder-v1.0.0-Guide.pdf](releases/pdf/Grex-Builder-v1.0.0-Guide.pdf), `grex-builder-v1.0.0-theme.zip`, and `SHA256SUMS.txt`.

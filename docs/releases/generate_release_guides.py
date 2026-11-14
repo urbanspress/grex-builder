@@ -491,6 +491,91 @@ def build_v040_html() -> str:
 """
 
 
+def build_v100_html() -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Grex Theme Builder v1.0.0 — Plain-English Release Guide</title>
+  <style>{CSS}</style>
+</head>
+<body>
+  <header class="cover">
+    <span class="badge">Grex Theme Builder · Production Release v1.0.0</span>
+    <h1>Grex Theme Builder v1.0.0</h1>
+    <p class="subtitle">Production Visual Theme &amp; Studio Release for GRAB v1.1.0, GrabLab CMS v1.0.0 &amp; Grex JS v1.0.0</p>
+    <p class="meta">
+      Repository: <code>urbanspress/grex-builder</code> &bull; Release Date: November 14, 2026 &bull; Exclusive <code>mode: &quot;visual&quot;</code> Theme (Zero Vue / Pinia / Webpack / Vite)
+    </p>
+  </header>
+
+  <section class="callout">
+    <strong>Plain-English Summary:</strong> <strong>Grex Theme Builder v1.0.0</strong> marks the production freeze of Step 3 in the GRAB Ecosystem. It delivers a complete, zero-build visual page and conditional theme studio powered purely by <strong>Grex JS v1.0.0</strong> reactive signals, compiling clean zero-wrapper-<code>&lt;div&gt;</code> layouts and integrating with <strong>GrabLab CMS v1.0.0</strong> through a single-click exclusive <code>mode: &quot;visual&quot;</code> theme package.
+  </section>
+
+  <section>
+    <h2>1. Complete Production Capabilities in v1.0.0</h2>
+    <ul>
+      <li><strong>Exclusive <code>mode: &quot;visual&quot;</code> GrabLab Theme Contract:</strong> Packaged in <code>theme/theme.json</code> (<code>&quot;version&quot;: &quot;1.0.0&quot;</code>, <code>&quot;mode&quot;: &quot;visual&quot;</code>, <code>&quot;engine&quot;: &quot;grex-visual&quot;</code>) with 20 native semantic blocks (<code>theme/grex.elements.json</code>) and 9 clean <code>.grab.html</code> site templates and reusable parts.</li>
+      <li><strong>Design System, Reusable Classes &amp; Responsive Breakpoints:</strong> Edit site-wide <code>--grex-*</code> colors, typography, spacing, Light &amp; Dark themes, Bricks-style <code>.grex-c-*</code> classes, and Desktop / Tablet / Mobile styles with live WCAG AA contrast warnings (<code>GREX-A11Y-001</code>).</li>
+      <li><strong>Conditional Theme Builder, Query Loops &amp; Pickers:</strong> Assign templates by route, content type, taxonomy term, or slug with automatic conflict detection (<code>GREX-TPL-CONFLICT</code>), build <code>ForEach</code> Query Loops, bind dynamic fields with exact decimal precision, choose accessible media &amp; navigation menus, and switch live <em>Preview As</em> contexts.</li>
+      <li><strong>Immutable Revisions, Zero-FOUC Rollback &amp; AI Guardrails:</strong> Every Publish saves a deduplicated snapshot in <code>template_revisions</code>, supports isolated historical preview and one-click CSS-first rollback, keeps <code>GRAB-DESIGN-SYSTEM.md</code> synced at <code>GET /api/design-system.md</code>, and validates <code>grab mcp</code> / Groxy AI layout edits (<code>POST /api/mcp/layout</code>) against schema, XSS, and WCAG AA rules with 1-click Undo.</li>
+      <li><strong>Pre-v1.0.0 Production Hardening &amp; <code>--read-only</code> Docker Deployment:</strong> Adds <code>GET /_ready</code>, server-side <code>attrs</code>/<code>styles</code> sanitization (<code>GREX-SEC-003</code> / <code>GREX-SEC-004</code>), Publish-time WCAG AA enforcement, independent immutable Studio chrome styling, and hardened <code>deploy/docker-compose.yml</code> templates (<code>read_only: true</code>, <code>cap_drop: ALL</code>, strictly scoped writable mounts).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. Frozen v1.x Architecture &amp; Quick Start</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Frozen Contract</th>
+          <th>Operator / Designer Benefit</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Visual Studio &amp; Bridge</strong></td>
+          <td><code>src/studio.grab</code>, <code>views/studio.grab.html</code>, <code>GrexPreviewBridge</code> v1.0</td>
+          <td>Zero-restart split-screen canvas synced via origin-verified browser messages</td>
+        </tr>
+        <tr>
+          <td><strong>Command Stack</strong></td>
+          <td>17 reversible command types in <code>theme/assets/commands.js</code> (200-step undo)</td>
+          <td>Human designers and Groxy AI share lossless <code>Ctrl+Z</code> Undo / Redo</td>
+        </tr>
+        <tr>
+          <td><strong>Zero-FOUC Publish &amp; Restore</strong></td>
+          <td>CSS written to <code>/static/grex/</code> before database &amp; <code>use cache</code> epoch swap</td>
+          <td>Visitors never see unstyled content; assets serve with SHA-256 cache-busting</td>
+        </tr>
+        <tr>
+          <td><strong>Hardened Docker Ops</strong></td>
+          <td><code>deploy/docker-compose.yml</code> + <code>/_health</code> + <code>/_ready</code></td>
+          <td>Runs safely with read-only root filesystem and zero Node/Webpack runtime bloat</td>
+        </tr>
+      </tbody>
+    </table>
+    <ol>
+      <li><strong>Run Standalone Studio:</strong> Run <code>migrations/001_studio_schema.grab</code> and <code>migrations/002_revisions_schema.grab</code>, then start <code>grab serve --allow-scripts ... src/studio.grab</code> and visit <code>http://127.0.0.1:8080/studio</code>.</li>
+      <li><strong>Activate in GrabLab CMS v1.0.0:</strong> Extract <code>grex-builder-v1.0.0-theme.zip</code> into <code>themes/grex-builder/</code> (with static assets in <code>public/themes/grex-builder/</code>) and click <strong>Activate</strong> inside <code>/admin/themes</code>.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>3. Final v1.0.0 Verification Gate Results</h2>
+    <ul>
+      <li><strong>Zero Wrapper <code>&lt;div&gt;</code> Bloat:</strong> Verified across all Studio panels, Media &amp; Menu pickers, Revisions Drawer, Restore Dialog, <code>GrexPreviewBridge</code> frames, and all 11 <code>.grab.html</code> templates.</li>
+      <li><strong>GRAB v1.1.0 Static &amp; Canonical Format Checks:</strong> 100% pass across <code>src/studio.grab</code>, migrations, and templates via <code>grab check</code> and non-destructive <code>grab format</code> verification.</li>
+      <li><strong>Full Automated Suite:</strong> <strong>24/24</strong> Node unit/DOM/accessibility/audit tests and <strong>5/5</strong> live Grisp &amp; GrabLab CMS v1.0.0 integration E2E gates pass at 100%.</li>
+    </ul>
+  </section>
+</body>
+</html>
+"""
+
+
 def main():
     HTML_DIR.mkdir(parents=True, exist_ok=True)
     PDF_DIR.mkdir(parents=True, exist_ok=True)
@@ -501,6 +586,7 @@ def main():
         ("Grex-Builder-v0.2.0-Guide", build_v020_html()),
         ("Grex-Builder-v0.3.0-Guide", build_v030_html()),
         ("Grex-Builder-v0.4.0-Guide", build_v040_html()),
+        ("Grex-Builder-v1.0.0-Guide", build_v100_html()),
     ]
     for stem, content in guides:
         html_path = HTML_DIR / f"{stem}.html"

@@ -73,7 +73,7 @@ function normalizeStateForDesignSystem(source) {
 export function generateDesignSystemMarkdown(source, options = {}) {
   const { slots, theme, classes, templateRegistry } = normalizeStateForDesignSystem(source);
   const siteName = String(options.siteName || "Grex Theme Builder");
-  const version = String(options.version || "0.4.0");
+  const version = String(options.version || "1.0.0");
 
   const lines = [];
   lines.push(`# GRAB-DESIGN-SYSTEM.md`);

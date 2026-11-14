@@ -1,6 +1,6 @@
 # GREX-BUILDER-SPEC-100: Grex Theme Builder `v1.0.0` Production Freeze & Hardening Specification
 
-- **Status:** Draft — Awaiting Project Owner Approval
+- **Status:** Approved & Frozen — Complete (`v1.0.0`)
 - **Target Milestone:** `v1.0.0`
 - **Dependencies:**
   - **GRAB:** `v1.1.0` (`use data`, `use cache`, `use server`, `server.asset`, `grab check`, `grab format`, `grab migrate`)

@@ -738,7 +738,7 @@ end
 
 make generate_design_system_md using doc
   set md to "# GRAB-DESIGN-SYSTEM.md\n\n"
-  set md to md joined with "> Auto-generated design-system contract for **Grex Theme Builder** (`v0.4.0`, `mode: \"visual\"`, `engine: \"grex-visual\"`).\n"
+  set md to md joined with "> Auto-generated design-system contract for **Grex Theme Builder** (`v1.0.0`, `mode: \"visual\"`, `engine: \"grex-visual\"`).\n"
   set md to md joined with "> **AI Contract:** Inspect this document before calling `update_entry_layout`, `create_entry_draft`, or `POST /api/mcp/layout`.\n\n"
 
   set md to md joined with "## 1. Active `--grex-*` Design Tokens\n\n"
@@ -1014,11 +1014,11 @@ make compute_snapshot_diff using target_snap, current_snap
 end
 
 route "GET" "/_health"
-  give back server.json using 200, record {status: "ok", engine: "grex-visual", version: "0.4.0"}
+  give back server.json using 200, record {status: "ok", engine: "grex-visual", version: "1.0.0"}
 end
 
 route "GET" "/_ready"
-  give back server.json using 200, record {status: "ready", engine: "grex-visual", version: "0.4.0"}
+  give back server.json using 200, record {status: "ready", engine: "grex-visual", version: "1.0.0"}
 end
 
 route "GET" "/"

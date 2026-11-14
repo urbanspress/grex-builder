@@ -17,7 +17,7 @@ It packages and installs as a first-class, exclusive `mode: "visual"` theme insi
 
 ---
 
-## Quick Start (`v0.4.0`)
+## Quick Start (`v1.0.0`)
 
 ### 1. Run Standalone Visual Studio
 ```powershell
@@ -28,7 +28,7 @@ grab serve --allow-scripts --db-config grab.data.json --allow-db main:read-write
 Open `http://127.0.0.1:8080/studio` to edit templates, global `--grex-*` theme tokens, reusable `.grex-c-*` classes, responsive breakpoints, conditional template rules, `ForEach` Query Loops, dynamic bindings, live **Preview As** contexts, immutable revision diffs/rollback (**Revisions**), live `GRAB-DESIGN-SYSTEM.md` (`/api/design-system.md`), and WCAG AA guarded `grab mcp` AI layout updates (`/api/mcp/layout`), then publish compiled CSS to `public/grex/`.
 
 ### 2. Install in GrabLab CMS v1.0.0
-Package `theme/` (`python scripts/package_release.py --version 0.4.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (slug `grex-builder`) from `/admin/themes`.
+Package `theme/` (`python scripts/package_release.py --version 1.0.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (slug `grex-builder`) from `/admin/themes`.
 
 ### 3. Run Verification Suite
 ```powershell
@@ -40,8 +40,8 @@ python tests/integration_e2e.py
 
 ## Current Status
 - **Repositories:** `urbanspress/grex-builder.progress` (active development) / `urbanspress/grex-builder.stable` (verified releases)
-- **Latest Release:** `v0.4.0` — Immutable Publish Snapshots, Semantic Revisions & Diff Drawer, One-Click Zero-FOUC Rollback & Live `GRAB-DESIGN-SYSTEM.md` / `grab mcp` AI Guardrails (**Complete**; see [Grex-Builder-v0.4.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.4.0-Guide.pdf)).
-- **Governance & Roadmap:** See [GREX-BUILDER-EXPERT.md](GREX-BUILDER-EXPERT.md), [AGENTS.md](AGENTS.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
+- **Latest Release:** `v1.0.0` — Production Visual Theme & Studio Release (**Approved & Frozen — Complete**; see [Grex-Builder-v1.0.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v1.0.0-Guide.pdf) and [CHANGELOG.md](CHANGELOG.md)).
+- **Governance & Roadmap:** See [GREX-BUILDER-EXPERT.md](GREX-BUILDER-EXPERT.md), [AGENTS.md](AGENTS.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [deploy/README.md](deploy/README.md).
 
 ---
 
