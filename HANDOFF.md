@@ -1,8 +1,8 @@
 # HANDOFF.md — Tandem Ownership & Session State
 
 **Current Owner:** Google Antigravity  
-**Active Milestone:** `v0.2.0` Complete — Next Target: `v0.3` (Conditional Theme Builder & Query Loop Builder)  
-**Repository:** `urbanspress/grex-builder` (`C:\Development\grex-builder`)
+**Active Milestone:** `v0.3` (`GREX-BUILDER-SPEC-003.md` drafted; awaiting owner approval before implementation)  
+**Repository:** `urbanspress/grex-builder.progress` / `urbanspress/grex-builder.stable` (`C:\Development\grex-builder`)
 
 ---
 
@@ -17,4 +17,4 @@
   - Release assets packaged via `scripts/package_release.py --version 0.2.0` and `docs/releases/generate_release_guides.py` (`docs/releases/pdf/Grex-Builder-v0.2.0-Guide.pdf`).
 
 ## Next Pending Task
-1. Draft and review `specifications/GREX-BUILDER-SPEC-003.md` for `v0.3` (Conditional Theme Builder, Visual Query Loop Builder, and Dynamic Data/Media/Menu Picker).
+1. Review and approve `specifications/GREX-BUILDER-SPEC-003.md` (`v0.3` — Conditional Theme Builder, Visual Query Loop Builder, and Dynamic Data/Media/Menu Pickers) before starting implementation.
