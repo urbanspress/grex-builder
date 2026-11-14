@@ -28,9 +28,11 @@ Before designing, editing, or reviewing any file, read [GREX-BUILDER-EXPERT.md](
 ## 3. Model Routing & Tandem Handoff
 - **Current Owner:** Google Antigravity
 - **Recommended Model & Effort Routing:**
-  - **Google Hydrogen (Medium):** Routine documentation, sample layouts, straightforward UI panels, and table-driven tests.
-  - **Google Hydrogen (High):** Core reactive `createBuilderStore`, command history stack, `GrexPreviewBridge` integration, and GrabLab API/theme contracts.
-  - **Google Hydrogen (Extra):** Complex CSS token/breakpoint compiler, security boundary hardening, and multi-layer integration debugging.
+  - **`Google Hydrogen (Medium)`:** Pre-implementation specifications (`*-SPEC-*.md`), documentation, governance updates, and single-module edits.
+  - **`Google Hydrogen (High)`:** Standard feature milestone implementations (`v0.4.0`, `v1.0.0` build & release).
+  - **`Orchestrator (Argon)`:** Second-opinion pre-`v1.0.0` security/DOM/contract audits, multi-repo cross-layer integrations, and complex refactors where Argon-level planning + automated delegation saves tokens.
+  - **`Google Hydrogen (Extra)`:** Reserved for autonomous AI engines (`Groxy AI`), multi-server orchestration (`Gashboard + Grabtaculous + grabman`), and stubborn cross-layer bugs.
+- **Mandatory Pause & Swap Prompt Rule:** Every active AI agent MUST pause at milestone boundaries or before high-risk cross-layer/pre-`v1.0.0` audits and explicitly tell the user when to switch to `Orchestrator (Argon)`, including a clear 1-sentence reason why `Orchestrator (Argon)` is recommended next.
 - **Handoff Rule:** If a core bug or architectural blocker remains unresolved after 2 attempts, stop, revert only your own failed edits, record the state in `HANDOFF.md`, and hand off cleanly.
 
 ---
