@@ -19,6 +19,7 @@ Before designing, editing, or reviewing any file, read [GREX-BUILDER-EXPERT.md](
 - **Release Assets & Plain-English Walkthrough PDF:** Every versioned release (`v0.1.0` onward) must include:
   - A plain-English walkthrough PDF (`docs/releases/pdf/GREX-BUILDER-v<X.Y.Z>-Guide.pdf`) explaining the release for non-coders.
   - Packaged theme archive, `SHA256SUMS.txt`, and matching GitHub Release assets on `urbanspress/grex-builder`.
+- **Brand Naming Invariant:** Always write **Grex Theme Builder** in human-facing prose, headings, UI labels, PDF guides, and release notes, reserving `grex-builder` strictly for machine slugs (`urbanspress/grex-builder`, directory paths, `"slug": "grex-builder"`, and archive filenames).
 
 ---
 
