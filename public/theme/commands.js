@@ -13,6 +13,7 @@ import {
 } from "./grex.js";
 import {
   cloneJson,
+  evaluateSlotDiagnostics,
   extractPartsMap,
   getNodeElementType,
   getNodeId,
@@ -42,6 +43,7 @@ export const COMMAND_TYPES = Object.freeze([
   "bindDynamicField",
   "bindMediaAsset",
   "bindNavigationMenu",
+  "applyAiLayout",
 ]);
 
 export const VALID_BREAKPOINTS = Object.freeze(["base", "tablet", "mobile"]);
@@ -974,6 +976,35 @@ export function executeBuilderCommand(state, rawCommand, meta = {}) {
       location: prevLocation || "primary",
       items: prevItems,
     };
+  } else if (type === "applyAiLayout") {
+    const slot = String(rawCommand.slot || "home").trim();
+    if (!nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${slot}" for applyAiLayout.`);
+    }
+    const candidate = rawCommand.nextTree || rawCommand.layout;
+    if (!candidate || typeof candidate !== "object") {
+      throw new GrexSecurityError("applyAiLayout requires a nextTree or layout object.");
+    }
+    touchedSlot = slot;
+    const prevTree = cloneJson(nextSlots[slot]);
+    const nextTree = normalizeStudioNode(candidate, slot);
+    const partsMap = extractPartsMap(nextSlots);
+    validateStudioNode(nextTree, partsMap);
+    if (!rawCommand._restore) {
+      const diag = evaluateSlotDiagnostics(nextTree, partsMap);
+      if (!diag.ok && diag.errors.length > 0) {
+        const first = diag.errors[0];
+        throw new GrexSecurityError(`[${first.code}] ${first.message}`);
+      }
+    }
+    nextSlots[slot] = nextTree;
+    inverse = {
+      type: "applyAiLayout",
+      slot,
+      nextTree: prevTree,
+      summary: "Revert Groxy AI layout",
+      _restore: true,
+    };
   }
 
   if (touchedSlot) {
@@ -981,10 +1012,19 @@ export function executeBuilderCommand(state, rawCommand, meta = {}) {
     validateStudioNode(nextSlots[touchedSlot], partsMap);
   }
 
+  const resolvedActor =
+    typeof meta.actor === "string" && meta.actor
+      ? meta.actor
+      : typeof rawCommand.actor === "string" && rawCommand.actor
+        ? rawCommand.actor
+        : type === "applyAiLayout"
+          ? "groxy-ai"
+          : "designer";
+
   const record = {
     command: cloneJson(rawCommand),
     inverse,
-    actor: typeof meta.actor === "string" && meta.actor ? meta.actor : "designer",
+    actor: resolvedActor,
     timestamp: new Date().toISOString(),
   };
 

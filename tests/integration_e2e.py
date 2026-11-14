@@ -116,9 +116,14 @@ def test_grab_static_checks():
     assert GRAB_BIN.exists(), f"Missing GRAB binary at {GRAB_BIN}"
 
     run_cmd([GRAB_BIN, "check", "--db-config", "grab.data.json", "migrations/001_studio_schema.grab"])
+    run_cmd([GRAB_BIN, "check", "--db-config", "grab.data.json", "migrations/002_revisions_schema.grab"])
     run_cmd([GRAB_BIN, "check", "--platform-config", "grab.platform.json", "src/studio.grab"])
 
-    for rel in ["migrations/001_studio_schema.grab", "src/studio.grab"]:
+    for rel in [
+        "migrations/001_studio_schema.grab",
+        "migrations/002_revisions_schema.grab",
+        "src/studio.grab",
+    ]:
         p = ROOT_DIR / rel
         before = p.read_text(encoding="utf-8")
         run_cmd([GRAB_BIN, "format", "--write", rel])
@@ -192,7 +197,9 @@ def test_node_unit_and_dom_suite():
         "--test",
         "tests/unit_store_commands.test.js",
         "tests/dom_studio_bridge.test.js",
+        "tests/unit_v02_design_system.test.js",
         "tests/unit_v03_conditional_dynamic.test.js",
+        "tests/unit_v04_revisions_ai.test.js",
     ])
     assert "fail 0" in res.stdout or res.returncode == 0, res.stdout
 
@@ -214,6 +221,7 @@ def test_live_studio_server():
         shutil.copy2(ROOT_DIR / "grab.platform.json", tmp / "grab.platform.json")
 
         static_grex = tmp / "public" / "grex"
+        design_system_file = tmp / "storage" / "GRAB-DESIGN-SYSTEM.md"
 
         run_cmd(
             [
@@ -227,10 +235,23 @@ def test_live_studio_server():
             ],
             cwd=tmp,
         )
+        run_cmd(
+            [
+                GRAB_BIN,
+                "migrate",
+                "--db-config",
+                "grab.data.json",
+                "--allow-db",
+                "main:migrate",
+                "migrations/002_revisions_schema.grab",
+            ],
+            cwd=tmp,
+        )
 
         port = free_port()
         env = os.environ.copy()
         env["GREX_STATIC_DIR"] = str(static_grex).replace("\\", "/")
+        env["GREX_DESIGN_SYSTEM_PATH"] = str(design_system_file).replace("\\", "/")
 
         studio_out = (tmp / "studio.stdout.log").open("w+", encoding="utf-8", errors="replace")
         studio_err = (tmp / "studio.stderr.log").open("w+", encoding="utf-8", errors="replace")
@@ -255,8 +276,12 @@ def test_live_studio_server():
                 str(tmp),
                 "--allow-write",
                 str(static_grex),
+                "--allow-write",
+                str(tmp / "storage"),
                 "--allow-env",
                 "GREX_STATIC_DIR",
+                "--allow-env",
+                "GREX_DESIGN_SYSTEM_PATH",
                 "src/studio.grab",
             ],
             cwd=str(tmp),
@@ -413,6 +438,201 @@ def test_live_studio_server():
             assert "@media (max-width: 1024px)" in served_builder_css
             assert "@media (max-width: 767px)" in served_builder_css
             assert (static_grex / "tokens.css").read_text(encoding="utf-8") == tokens_css
+
+            # --- v0.4.0 Immutable Publish Snapshots, Diff, Rollback & AI MCP Guardrails ---
+            # 1. Revision #1 recorded on publish
+            st, _, _, _, revs_res = http_req(port, "GET", "/api/revisions")
+            assert st == 200 and revs_res["ok"] is True, revs_res
+            assert len(revs_res["revisions"]) == 1, revs_res
+            rev1 = revs_res["revisions"][0]
+            assert rev1["revision_number"] == 1 and len(rev1["content_hash"]) == 64
+
+            # 2. Re-publishing identical snapshot deduplicates cleanly
+            st, _, _, _, pub_dup = http_req(
+                port,
+                "POST",
+                "/api/studio/publish",
+                {"document": draft_doc, "tokensCss": tokens_css, "builderCss": marker_css},
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 200 and pub_dup["ok"] is True, pub_dup
+            assert pub_dup["revision"]["deduplicated"] is True, pub_dup
+            st, _, _, _, revs_after_dup = http_req(port, "GET", "/api/revisions")
+            assert len(revs_after_dup["revisions"]) == 1
+
+            # 3. Publish modified snapshot -> creates Revision #2 & updates GRAB-DESIGN-SYSTEM.md
+            rev2_doc = json.loads(json.dumps(draft_doc))
+            rev2_doc["templates"]["home"]["children"][1]["children"][0]["children"][1]["props"]["text"] = "v0.4 Summer Hero"
+            rev2_doc["theme"]["tokens"]["--grex-color-primary"] = "#1d4ed8"
+            marker_css_v2 = (
+                "/* published-v2-marker */\n"
+                ".grex-c-hero-card { padding: 3rem; }\n"
+            )
+            tokens_css_v2 = ":root { --grex-color-primary: #1d4ed8; }\n"
+            st, _, _, _, pub2_res = http_req(
+                port,
+                "POST",
+                "/api/studio/publish",
+                {"document": rev2_doc, "tokensCss": tokens_css_v2, "builderCss": marker_css_v2},
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 200 and pub2_res["ok"] is True, pub2_res
+            assert pub2_res["revision"]["revision_number"] == 2
+            assert pub2_res["live_epoch"] == epoch0 + 3
+
+            # Verify auto-written GRAB-DESIGN-SYSTEM.md & GET /api/design-system.md
+            assert design_system_file.exists(), "storage/GRAB-DESIGN-SYSTEM.md was not generated"
+            st, _, ds_headers, ds_body, _ = http_req(port, "GET", "/api/design-system.md")
+            assert st == 200 and "GRAB-DESIGN-SYSTEM.md" in ds_body
+            assert "#1d4ed8" in ds_body and "hero-card" in ds_body and "Section" in ds_body
+
+            # 4. Inspect Revision #1 structured diff against current Revision #2 live head
+            st, _, _, rev1_txt, rev1_detail = http_req(port, "GET", f"/api/revisions/{rev1['id']}")
+            assert st == 200 and rev1_detail and rev1_detail["ok"] is True, (st, rev1_txt, rev1_detail)
+            assert "home" in rev1_detail["diff"]["templates"]["modified"], rev1_detail["diff"]
+            assert any(
+                c["token"] == "--grex-color-primary" and c["to"] == "#047857"
+                for c in rev1_detail["diff"]["theme_tokens"]["changed"]
+            ), rev1_detail["diff"]
+
+            # 5. One-click Restore Revision #1 (CSRF required -> writes CSS first, appends forward Rev #3)
+            st, _, _, _, bad_restore = http_req(
+                port, "POST", f"/api/revisions/{rev1['id']}/restore", {}
+            )
+            assert st == 403 and bad_restore["ok"] is False
+
+            st, _, _, _, restore_res = http_req(
+                port,
+                "POST",
+                f"/api/revisions/{rev1['id']}/restore",
+                {},
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 200 and restore_res["ok"] is True, restore_res
+            assert restore_res["revision"]["revision_number"] == 3
+            assert restore_res["revision"]["parent_revision_id"] == rev1["id"]
+            assert restore_res["live_epoch"] == epoch0 + 4
+
+            st, _, _, restored_css, _ = http_req(port, "GET", "/static/grex/builder.css")
+            assert st == 200 and "published-e2e-marker" in restored_css
+            st, _, _, _, ds_after_restore = (lambda s, h, r, t, j: (s, h, r, t, j))(*http_req(port, "GET", "/api/design-system.md"))
+            assert st == 200 and "#047857" in (tmp / "storage" / "GRAB-DESIGN-SYSTEM.md").read_text(encoding="utf-8")
+
+            st, _, _, _, revs_after_restore = http_req(port, "GET", "/api/revisions")
+            assert len(revs_after_restore["revisions"]) == 3
+
+            # 6. grab mcp AI Guardrail endpoint (POST /api/mcp/layout + GET /api/studio/commands)
+            st, _, _, _, bad_csrf_mcp = http_req(port, "POST", "/api/mcp/layout", {"slot": "home", "tree": {}})
+            assert st == 403
+
+            # Reject <div>
+            st, _, _, _, div_mcp = http_req(
+                port,
+                "POST",
+                "/api/mcp/layout",
+                {"slot": "home", "layout": {"element": "div", "tag": "div", "props": {"id": "bad"}, "children": []}},
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 422 and div_mcp["mcp_error"]["code"] == -32602 and "div" in div_mcp["error"].lower(), div_mcp
+
+            # Reject <script> / javascript: URL
+            st, _, _, _, xss_mcp = http_req(
+                port,
+                "POST",
+                "/api/mcp/layout",
+                {
+                    "slot": "home",
+                    "layout": {
+                        "element": "Container",
+                        "tag": "section",
+                        "props": {"id": "ok-sec"},
+                        "children": [
+                            {"element": "Button", "props": {"id": "xss", "text": "Go", "href": "javascript:alert(1)"}}
+                        ],
+                    },
+                },
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 422 and xss_mcp["mcp_error"]["code"] == -32602 and "unsafe" in xss_mcp["error"].lower(), xss_mcp
+
+            # Reject WCAG AA low contrast (#9ca3af on #ffffff)
+            st, _, _, _, lc_mcp = http_req(
+                port,
+                "POST",
+                "/api/mcp/layout",
+                {
+                    "slot": "home",
+                    "tree": {
+                        "element": "Container",
+                        "tag": "main",
+                        "props": {"id": "lc-main"},
+                        "children": [
+                            {
+                                "element": "Text",
+                                "tag": "p",
+                                "props": {"id": "lc-text", "text": "Faint text"},
+                                "styles": {"base": {"color": "#9ca3af", "background-color": "#ffffff"}},
+                            }
+                        ],
+                    },
+                },
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 422 and lc_mcp["code"] == "GREX-A11Y-001" and lc_mcp["mcp_error"]["code"] == -32602, lc_mcp
+
+            # Reject Image missing alt
+            st, _, _, _, alt_mcp = http_req(
+                port,
+                "POST",
+                "/api/mcp/layout",
+                {
+                    "slot": "home",
+                    "layout": {
+                        "element": "Container",
+                        "tag": "main",
+                        "props": {"id": "img-main"},
+                        "children": [
+                            {"element": "Image", "props": {"id": "no-alt", "src": "/static/grex/hero.png"}}
+                        ],
+                    },
+                },
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 422 and alt_mcp["code"] == "GREX-A11Y-002" and alt_mcp["mcp_error"]["code"] == -32602, alt_mcp
+
+            # Valid accessible AI layout succeeds -> draft updated, published intact, logged as actor: "groxy-ai"
+            st, _, _, _, ok_mcp = http_req(
+                port,
+                "POST",
+                "/api/mcp/layout",
+                {
+                    "slot": "home",
+                    "summary": "MCP hero refresh",
+                    "tree": {
+                        "element": "Container",
+                        "tag": "main",
+                        "props": {"id": "ai-main"},
+                        "styles": {"base": {"color": "#0f172a", "background-color": "#ffffff"}},
+                        "children": [
+                            {"element": "Heading", "props": {"id": "ai-h1", "level": 1, "text": "Groxy AI Hero"}},
+                            {"element": "Image", "props": {"id": "ai-img", "src": "/static/grex/hero.png", "alt": "Showcase"}},
+                        ],
+                    },
+                },
+                headers={"X-CSRF-Token": csrf},
+            )
+            assert st == 200 and ok_mcp["ok"] is True and ok_mcp["actor"] == "groxy-ai", ok_mcp
+
+            st, _, _, _, st_after_mcp = http_req(port, "GET", "/api/studio/state")
+            assert st_after_mcp["draft"]["templates"]["home"]["children"][0]["props"]["text"] == "Groxy AI Hero"
+            assert (
+                st_after_mcp["published"]["templates"]["home"]["children"][1]["children"][0]["children"][1]["props"]["text"]
+                == "Draft Hero Headline"
+            )
+
+            st, _, _, _, cmds_res = http_req(port, "GET", "/api/studio/commands")
+            assert st == 200 and cmds_res["ok"] is True, cmds_res
+            assert any(c["actor"] == "groxy-ai" and c["command_type"] == "applyAiLayout" for c in cmds_res["commands"]), cmds_res
         finally:
             proc.terminate()
             proc.wait(timeout=5)

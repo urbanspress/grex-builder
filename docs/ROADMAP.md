@@ -31,7 +31,7 @@
 ---
 
 ## `v0.4` — Revisions, Rollback & AI Design Guardrails
-**Status:** Approved target; specification in review ([`specifications/GREX-BUILDER-SPEC-004.md`](../specifications/GREX-BUILDER-SPEC-004.md))
+**Status:** Complete & verified (`v0.4.0`; [`specifications/GREX-BUILDER-SPEC-004.md`](../specifications/GREX-BUILDER-SPEC-004.md))
 
 - **Revision History & One-Click Rollback:** Immutable snapshotted layout, conditional rule, token, and class-registry revisions (`template_revisions`) stored in GrabLab `use data` with SHA-256 content hashing, visual diff summary, `GrexPreviewBridge` historical preview, and atomic one-click rollback (creating a new forward revision) with CSS-first zero-FOUC `/static/grex/` republishing.
 - **`GRAB-DESIGN-SYSTEM.md` & `grab mcp` AI Guardrails:** Auto-generated, machine- and AI-readable design-system contract describing active `--grex-*` tokens, `.grex-c-*` reusable classes, approved `grex.elements.json` patterns, and conditional template slots, paired with strict `grab mcp` / `/api/mcp` mutation guardrails (`validateElementNode()`, WCAG AA `4.5:1` contrast + `alt` `auditAccessibility()`, zero wrapper-`<div>` enforcement, and `createCommandStack` undo parity for **Groxy AI**).

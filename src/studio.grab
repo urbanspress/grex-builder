@@ -6,6 +6,7 @@ use dates
 use env
 use files
 use json
+use math
 use server
 use text
 
@@ -16,7 +17,15 @@ set stmt_get_layout to data.prepare using db, "SELECT slot_scope, status, docume
 set stmt_insert_layout to data.prepare using db, "INSERT INTO studio_layouts (slot_scope, status, document_json, css_hash, updated_at) VALUES (:slot_scope, :status, :document_json, :css_hash, :updated_at)", record {params: record {slot_scope: "text", status: "text", document_json: "text", css_hash: "text", updated_at: "text"}, columns: record {}}
 set stmt_update_layout to data.prepare using db, "UPDATE studio_layouts SET document_json = :document_json, css_hash = :css_hash, updated_at = :updated_at WHERE slot_scope = :slot_scope AND status = :status", record {params: record {document_json: "text", css_hash: "text", updated_at: "text", slot_scope: "text", status: "text"}, columns: record {}}
 
-set stmts to record {db: db, studio_cache: studio_cache, get_layout: stmt_get_layout, insert_layout: stmt_insert_layout, update_layout: stmt_update_layout}
+set stmt_get_latest_revision to data.prepare using db, "SELECT id, revision_number, scope_key, author, summary, content_hash, snapshot_json, parent_revision_id, created_at FROM template_revisions WHERE scope_key = :scope_key ORDER BY revision_number DESC, id DESC LIMIT 1", record {params: record {scope_key: "text"}, columns: record {id: "integer", revision_number: "integer", scope_key: "text", author: "text", summary: "text", content_hash: "text", snapshot_json: "text", parent_revision_id: record {type: "integer", nullable: yes}, created_at: "text"}}
+set stmt_list_revisions to data.prepare using db, "SELECT id, revision_number, scope_key, author, summary, content_hash, parent_revision_id, created_at FROM template_revisions WHERE scope_key = :scope_key ORDER BY revision_number DESC, id DESC", record {params: record {scope_key: "text"}, columns: record {id: "integer", revision_number: "integer", scope_key: "text", author: "text", summary: "text", content_hash: "text", parent_revision_id: record {type: "integer", nullable: yes}, created_at: "text"}}
+set stmt_get_revision_by_id to data.prepare using db, "SELECT id, revision_number, scope_key, author, summary, content_hash, snapshot_json, parent_revision_id, created_at FROM template_revisions WHERE id = :id", record {params: record {id: "integer"}, columns: record {id: "integer", revision_number: "integer", scope_key: "text", author: "text", summary: "text", content_hash: "text", snapshot_json: "text", parent_revision_id: record {type: "integer", nullable: yes}, created_at: "text"}}
+set stmt_insert_revision to data.prepare using db, "INSERT INTO template_revisions (revision_number, scope_key, author, summary, content_hash, snapshot_json, parent_revision_id, created_at) VALUES (:revision_number, :scope_key, :author, :summary, :content_hash, :snapshot_json, :parent_revision_id, :created_at)", record {params: record {revision_number: "integer", scope_key: "text", author: "text", summary: "text", content_hash: "text", snapshot_json: "text", parent_revision_id: record {type: "integer", nullable: yes}, created_at: "text"}, columns: record {}}
+
+set stmt_insert_command to data.prepare using db, "INSERT INTO studio_commands (actor, command_json, created_at) VALUES (:actor, :command_json, :created_at)", record {params: record {actor: "text", command_json: "text", created_at: "text"}, columns: record {}}
+set stmt_list_commands to data.prepare using db, "SELECT id, actor, command_json, created_at FROM studio_commands ORDER BY id DESC LIMIT :limit_rows", record {params: record {limit_rows: "integer"}, columns: record {id: "integer", actor: "text", command_json: "text", created_at: "text"}}
+
+set stmts to record {db: db, studio_cache: studio_cache, get_layout: stmt_get_layout, insert_layout: stmt_insert_layout, update_layout: stmt_update_layout, get_latest_revision: stmt_get_latest_revision, list_revisions: stmt_list_revisions, get_revision_by_id: stmt_get_revision_by_id, insert_revision: stmt_insert_revision, insert_command: stmt_insert_command, list_commands: stmt_list_commands}
 
 make safe_asset_url using raw_path
   try
@@ -55,6 +64,32 @@ make is_safe_url using raw_url
     give back no
   end
   give back yes
+end
+
+make has_map_key using m, key
+  if m is nothing
+    give back no
+  end
+  set ks to collections.keys using m
+  for each k in ks
+    if k is key
+      give back yes
+    end
+  end
+  give back no
+end
+
+make map_put using obj, key, val
+  set m to {}
+  if obj is not nothing
+    for each k in (collections.keys using obj)
+      if k is not key
+        set m to collections.put using m, k, (obj at k)
+      end
+    end
+  end
+  set m to collections.put using m, key, val
+  give back m
 end
 
 make validate_grex_node using node, depth
@@ -111,19 +146,6 @@ make validate_grex_node using node, depth
   end
 end
 
-make has_map_key using m, key
-  if m is nothing
-    give back no
-  end
-  set ks to collections.keys using m
-  for each k in ks
-    if k is key
-      give back yes
-    end
-  end
-  give back no
-end
-
 make validate_grex_doc using doc
   if not (doc has "templates")
     give back record {ok: no, error: "Document missing templates object"}
@@ -150,6 +172,241 @@ make validate_grex_doc using doc
     end
   end
   give back record {ok: yes, error: ""}
+end
+
+make hex_digit_val using ch
+  set digits to "0123456789abcdef"
+  set chars to text.split using digits, ""
+  set idx to 0
+  for each c in chars
+    if c is ch
+      give back idx
+    end
+    set idx to idx plus 1
+  end
+  give back -1
+end
+
+make parse_hex_color using raw_color
+  set s to text.lower using (text.trim using (text.from using raw_color))
+  if not (text.starts_with using s, "#")
+    give back nothing
+  end
+  set chars to text.split using s, ""
+  set n to collections.length using chars
+  if n is 4
+    set r0 to hex_digit_val using (chars at 1)
+    set g0 to hex_digit_val using (chars at 2)
+    set b0 to hex_digit_val using (chars at 3)
+    if r0 is less than 0 or g0 is less than 0 or b0 is less than 0
+      give back nothing
+    end
+    give back record {r: (r0 times 17), g: (g0 times 17), b: (b0 times 17)}
+  end
+  if n is 7
+    set r1 to hex_digit_val using (chars at 1)
+    set r2 to hex_digit_val using (chars at 2)
+    set g1 to hex_digit_val using (chars at 3)
+    set g2 to hex_digit_val using (chars at 4)
+    set b1 to hex_digit_val using (chars at 5)
+    set b2 to hex_digit_val using (chars at 6)
+    if r1 is less than 0 or r2 is less than 0 or g1 is less than 0 or g2 is less than 0 or b1 is less than 0 or b2 is less than 0
+      give back nothing
+    end
+    give back record {r: ((r1 times 16) plus r2), g: ((g1 times 16) plus g2), b: ((b1 times 16) plus b2)}
+  end
+  give back nothing
+end
+
+make linearize_channel using c255
+  set x to (c255 times 1.0) divided by 255.0
+  if x is at most 0.04045
+    give back x divided by 12.92
+  end
+  set inner to 0.59538671 minus (0.11764913 times x)
+  set inner to 0.55729664 plus (x times inner)
+  set inner to -0.03665408 plus (x times inner)
+  set val to 0.0013962 plus (x times inner)
+  if val is less than 0.0
+    give back 0.0
+  end
+  if val is greater than 1.0
+    give back 1.0
+  end
+  give back val
+end
+
+make compute_contrast_ratio using fg_hex, bg_hex
+  set fg to parse_hex_color using fg_hex
+  set bg to parse_hex_color using bg_hex
+  if fg is nothing or bg is nothing
+    give back nothing
+  end
+  set lf to (0.2126 times (linearize_channel using fg.r)) plus (0.7152 times (linearize_channel using fg.g)) plus (0.0722 times (linearize_channel using fg.b))
+  set lb to (0.2126 times (linearize_channel using bg.r)) plus (0.7152 times (linearize_channel using bg.g)) plus (0.0722 times (linearize_channel using bg.b))
+  set lighter to math.max using lf, lb
+  set darker to math.min using lf, lb
+  give back math.round using (((lighter plus 0.05) divided by (darker plus 0.05)) times 1.0), 2
+end
+
+make extract_node_style_map using node
+  if not (node has "styles")
+    give back record {}
+  end
+  set st to node at "styles"
+  if st has "base"
+    give back st at "base"
+  end
+  give back st
+end
+
+make check_node_a11y using node, inherited_bg, heading_state
+  set el_name to ""
+  if node has "element"
+    set el_name to text.from using (node at "element")
+  otherwise
+    if node has "type"
+      set el_name to text.from using (node at "type")
+    end
+  end
+  set props to record {}
+  if node has "props"
+    set props to node at "props"
+  end
+  set attrs to record {}
+  if node has "attrs"
+    set attrs to node at "attrs"
+  end
+  set base_st to extract_node_style_map using node
+
+  set bg_color to inherited_bg
+  if has_map_key using base_st, "background-color"
+    set bg_color to text.from using (base_st at "background-color")
+  otherwise
+    if has_map_key using base_st, "backgroundColor"
+      set bg_color to text.from using (base_st at "backgroundColor")
+    otherwise
+      if has_map_key using base_st, "background"
+        set bg_color to text.from using (base_st at "background")
+      end
+    end
+  end
+
+  if (has_map_key using base_st, "color") and bg_color is not ""
+    set fg_color to text.from using (base_st at "color")
+    set ratio to compute_contrast_ratio using fg_color, bg_color
+    if ratio is not nothing
+      if ratio is less than 4.5
+        give back record {ok: no, code: "GREX-A11Y-001", error: ("Contrast ratio " joined with (text.from using ratio) joined with ":1 (" joined with fg_color joined with " on " joined with bg_color joined with ") is below WCAG AA minimum 4.5:1.")}
+      end
+    end
+  end
+
+  if has_map_key using base_st, "outline"
+    set out_v to text.lower using (text.trim using (text.from using (base_st at "outline")))
+    if out_v is "none" or out_v is "0"
+      give back record {ok: no, code: "GREX-A11Y-005", error: "Removing focus outline violates WCAG keyboard accessibility."}
+    end
+  end
+
+  if el_name is "Image"
+    set is_deco to no
+    if has_map_key using props, "decorative"
+      if (props at "decorative") is yes
+        set is_deco to yes
+      end
+    end
+    if has_map_key using props, "is_decorative"
+      if (props at "is_decorative") is yes
+        set is_deco to yes
+      end
+    end
+    set alt_txt to ""
+    if has_map_key using props, "alt"
+      set alt_txt to text.trim using (text.from using (props at "alt"))
+    end
+    if not is_deco and alt_txt is ""
+      give back record {ok: no, code: "GREX-A11Y-002", error: "Non-decorative Image requires descriptive alt text or explicit decorative: true."}
+    end
+  end
+
+  if el_name is "Input" or el_name is "Select"
+    set is_hidden to no
+    if has_map_key using props, "type"
+      if (text.lower using (text.from using (props at "type"))) is "hidden"
+        set is_hidden to yes
+      end
+    end
+    set has_lbl to no
+    if has_map_key using props, "label"
+      if (text.trim using (text.from using (props at "label"))) is not ""
+        set has_lbl to yes
+      end
+    end
+    if has_map_key using attrs, "aria-label"
+      if (text.trim using (text.from using (attrs at "aria-label"))) is not ""
+        set has_lbl to yes
+      end
+    end
+    if not is_hidden and (not has_lbl)
+      give back record {ok: no, code: "GREX-A11Y-003", error: (el_name joined with " must provide a label or aria-label.")}
+    end
+  end
+
+  if el_name is "Heading"
+    set lvl to 2
+    if has_map_key using props, "level"
+      try
+        set lvl to text.to_integer using (text.from using (props at "level"))
+      catch err
+        set lvl to 2
+      end
+    end
+    if heading_state.last_level is greater than 0 and lvl is greater than (heading_state.last_level plus 1)
+      give back record {ok: no, code: "GREX-A11Y-004", error: ("Skipped heading level from h" joined with (text.from using heading_state.last_level) joined with " to h" joined with (text.from using lvl))}
+    end
+    set next_heading_state to record {last_level: lvl}
+  otherwise
+    set next_heading_state to heading_state
+  end
+
+  if el_name is "Button" or el_name is "Link"
+    set acc_name to ""
+    if has_map_key using props, "text"
+      set acc_name to text.trim using (text.from using (props at "text"))
+    end
+    if acc_name is "" and (has_map_key using props, "label")
+      set acc_name to text.trim using (text.from using (props at "label"))
+    end
+    if acc_name is "" and (has_map_key using props, "aria-label")
+      set acc_name to text.trim using (text.from using (props at "aria-label"))
+    end
+    if acc_name is "" and (has_map_key using attrs, "aria-label")
+      set acc_name to text.trim using (text.from using (attrs at "aria-label"))
+    end
+    if acc_name is ""
+      give back record {ok: no, code: "GREX-A11Y-005", error: (el_name joined with " must have visible text or an aria-label.")}
+    end
+  end
+
+  if node has "children"
+    set cur_h to next_heading_state
+    for each ch in (node at "children")
+      set cres to check_node_a11y using ch, bg_color, cur_h
+      if not cres.ok
+        give back cres
+      end
+      set cur_h to cres.heading_state
+    end
+    give back record {ok: yes, code: "", error: "", heading_state: cur_h}
+  end
+
+  give back record {ok: yes, code: "", error: "", heading_state: next_heading_state}
+end
+
+make audit_grex_tree_a11y using root_node, default_bg
+  set res to check_node_a11y using root_node, default_bg, (record {last_level: 0})
+  give back res
 end
 
 make load_disk_default_doc
@@ -250,8 +507,447 @@ make get_static_grex_dir
   give back out
 end
 
+make get_design_system_path
+  set out to "storage/GRAB-DESIGN-SYSTEM.md"
+  try
+    if env.has using "GREX_DESIGN_SYSTEM_PATH"
+      set raw to text.trim using (env.get using "GREX_DESIGN_SYSTEM_PATH")
+      if raw is not ""
+        set out to raw
+      end
+    end
+  catch err
+    set out to "storage/GRAB-DESIGN-SYSTEM.md"
+  end
+  give back out
+end
+
+make compile_css_from_snapshot using snap
+  set tokens_css to ""
+  set builder_css to ""
+  if has_map_key using snap, "compiled_css"
+    set cc to snap at "compiled_css"
+    if has_map_key using cc, "tokens_css"
+      set tokens_css to text.from using (cc at "tokens_css")
+    end
+    if has_map_key using cc, "builder_css"
+      set builder_css to text.from using (cc at "builder_css")
+    end
+  end
+
+  if tokens_css is ""
+    set theme to record {}
+    if has_map_key using snap, "theme_tokens"
+      set theme to snap at "theme_tokens"
+    end
+    set root_lines to ""
+    if has_map_key using theme, "tokens"
+      set tmap to theme at "tokens"
+      for each tk in (collections.keys using tmap)
+        set root_lines to root_lines joined with "  " joined with tk joined with ": " joined with (text.from using (tmap at tk)) joined with ";\n"
+      end
+    end
+    set tokens_css to ":root {\n" joined with root_lines joined with "}\n"
+    if has_map_key using theme, "modes"
+      set modes to theme at "modes"
+      if has_map_key using modes, "dark"
+        set dmap to modes at "dark"
+        set dark_lines to ""
+        for each dk in (collections.keys using dmap)
+          set dark_lines to dark_lines joined with "  " joined with dk joined with ": " joined with (text.from using (dmap at dk)) joined with ";\n"
+        end
+        set tokens_css to tokens_css joined with "[data-grex-theme=\"dark\"] {\n" joined with dark_lines joined with "}\n"
+      end
+    end
+  end
+
+  if builder_css is ""
+    set cls_lines to ""
+    if has_map_key using snap, "class_registry"
+      set creg to snap at "class_registry"
+      for each cname in (collections.keys using creg)
+        set cobj to creg at cname
+        if has_map_key using cobj, "base"
+          set bmap to cobj at "base"
+          set decls to ""
+          for each pk in (collections.keys using bmap)
+            set decls to decls joined with " " joined with pk joined with ": " joined with (text.from using (bmap at pk)) joined with ";"
+          end
+          set cls_lines to cls_lines joined with ".grex-c-" joined with cname joined with " {" joined with decls joined with " }\n"
+        end
+        if has_map_key using cobj, "tablet"
+          set tmap to cobj at "tablet"
+          set decls to ""
+          for each pk in (collections.keys using tmap)
+            set decls to decls joined with " " joined with pk joined with ": " joined with (text.from using (tmap at pk)) joined with ";"
+          end
+          set cls_lines to cls_lines joined with "@media (max-width: 1024px) { .grex-c-" joined with cname joined with " {" joined with decls joined with " } }\n"
+        end
+        if has_map_key using cobj, "mobile"
+          set mmap to cobj at "mobile"
+          set decls to ""
+          for each pk in (collections.keys using mmap)
+            set decls to decls joined with " " joined with pk joined with ": " joined with (text.from using (mmap at pk)) joined with ";"
+          end
+          set cls_lines to cls_lines joined with "@media (max-width: 767px) { .grex-c-" joined with cname joined with " {" joined with decls joined with " } }\n"
+        end
+      end
+    end
+    set builder_css to tokens_css joined with "\n" joined with cls_lines
+  end
+
+  give back record {tokens_css: tokens_css, builder_css: builder_css}
+end
+
+make write_static_css_files using tokens_css, builder_css
+  set static_dir to call get_static_grex_dir
+  if tokens_css is not ""
+    call files.write_text using (static_dir joined with "/tokens.css"), tokens_css
+  end
+  if builder_css is not ""
+    call files.write_text using (static_dir joined with "/builder.css"), builder_css
+  end
+  give back crypto.sha256_hex using builder_css
+end
+
+make build_snapshot_from_doc using doc, tokens_css, builder_css
+  set templates to record {}
+  if has_map_key using doc, "templates"
+    set templates to doc at "templates"
+  end
+  set parts to record {}
+  if has_map_key using doc, "parts"
+    set parts to doc at "parts"
+  end
+  set conditional_rules to []
+  if has_map_key using doc, "templateRegistry"
+    set conditional_rules to doc at "templateRegistry"
+  end
+  set theme_tokens to record {}
+  if has_map_key using doc, "theme"
+    set theme_tokens to doc at "theme"
+  end
+  set class_registry to record {}
+  if has_map_key using doc, "classes"
+    set class_registry to doc at "classes"
+  end
+
+  set canonical_core to record {class_registry: class_registry, conditional_rules: conditional_rules, parts: parts, templates: templates, theme_tokens: theme_tokens}
+  set content_hash to crypto.sha256_hex using (json.stringify using canonical_core)
+  set snapshot to record {templates: templates, parts: parts, conditional_rules: conditional_rules, theme_tokens: theme_tokens, class_registry: class_registry, compiled_css: (record {tokens_css: tokens_css, builder_css: builder_css})}
+  give back record {content_hash: content_hash, snapshot: snapshot}
+end
+
+make snapshot_to_doc using snap
+  set templates to {}
+  if has_map_key using snap, "templates"
+    set templates to snap at "templates"
+  end
+  set parts to {}
+  if has_map_key using snap, "parts"
+    set parts to snap at "parts"
+  end
+  set doc to {"schemaVersion": "1.0.0", "engine": "grex-visual", "parts": parts, "templates": templates}
+  if has_map_key using snap, "theme_tokens"
+    set tt to snap at "theme_tokens"
+    if (collections.length using (collections.keys using tt)) is greater than 0
+      set doc to map_put using doc, "theme", tt
+    end
+  end
+  if has_map_key using snap, "class_registry"
+    set cr to snap at "class_registry"
+    if (collections.length using (collections.keys using cr)) is greater than 0
+      set doc to map_put using doc, "classes", cr
+    end
+  end
+  if has_map_key using snap, "conditional_rules"
+    set rules to snap at "conditional_rules"
+    if (collections.length using rules) is greater than 0
+      set doc to map_put using doc, "templateRegistry", rules
+    end
+  end
+  give back doc
+end
+
+make generate_design_system_md using doc
+  set md to "# GRAB-DESIGN-SYSTEM.md\n\n"
+  set md to md joined with "> Auto-generated design-system contract for **Grex Theme Builder** (`v0.4.0`, `mode: \"visual\"`, `engine: \"grex-visual\"`).\n"
+  set md to md joined with "> **AI Contract:** Inspect this document before calling `update_entry_layout`, `create_entry_draft`, or `POST /api/mcp/layout`.\n\n"
+
+  set md to md joined with "## 1. Active `--grex-*` Design Tokens\n\n"
+  set theme to record {}
+  if has_map_key using doc, "theme"
+    set theme to doc at "theme"
+  end
+  set md to md joined with "### Base `:root` Tokens\n| Token | Value |\n|---|---|\n"
+  if has_map_key using theme, "tokens"
+    set tmap to theme at "tokens"
+    set tkeys to collections.keys using tmap
+    if (collections.length using tkeys) is 0
+      set md to md joined with "| `--grex-color-primary` | `#047857` |\n"
+    otherwise
+      for each tk in tkeys
+        set md to md joined with "| `" joined with tk joined with "` | `" joined with (text.from using (tmap at tk)) joined with "` |\n"
+      end
+    end
+  otherwise
+    set md to md joined with "| `--grex-color-primary` | `#047857` |\n"
+  end
+  set md to md joined with "\n"
+
+  if has_map_key using theme, "modes"
+    set modes to theme at "modes"
+    for each mode_name in ["light", "dark"]
+      if has_map_key using modes, mode_name
+        set mmap to modes at mode_name
+        set md to md joined with "### Mode: `" joined with mode_name joined with "`\n| Token | Value |\n|---|---|\n"
+        for each mk in (collections.keys using mmap)
+          set md to md joined with "| `" joined with mk joined with "` | `" joined with (text.from using (mmap at mk)) joined with "` |\n"
+        end
+        set md to md joined with "\n"
+      end
+    end
+  end
+
+  set md to md joined with "## 2. Reusable `.grex-c-*` Class Registry\n\n"
+  set md to md joined with "Prefer attaching existing `.grex-c-*` classes via `props.class` rather than inventing inline styles.\n\n"
+  if has_map_key using doc, "classes"
+    set creg to doc at "classes"
+    set ckeys to collections.keys using creg
+    if (collections.length using ckeys) is 0
+      set md to md joined with "_No author-defined `.grex-c-*` classes registered yet._\n\n"
+    otherwise
+      for each cname in ckeys
+        set md to md joined with "- **`.grex-c-" joined with cname joined with "`**\n"
+        set cobj to creg at cname
+        for each bp in ["base", "tablet", "mobile"]
+          if has_map_key using cobj, bp
+            set bmap to cobj at bp
+            set md to md joined with "  - `" joined with bp joined with "`: `"
+            for each pk in (collections.keys using bmap)
+              set md to md joined with pk joined with ": " joined with (text.from using (bmap at pk)) joined with "; "
+            end
+            set md to md joined with "`\n"
+          end
+        end
+      end
+      set md to md joined with "\n"
+    end
+  otherwise
+    set md to md joined with "_No author-defined `.grex-c-*` classes registered yet._\n\n"
+  end
+
+  set md to md joined with "## 3. Approved `grex.elements.json` Patterns & Semantic Rules\n\n"
+  set md to md joined with "- **Zero Wrapper-`<div>` Invariant:** Never emit `<div>`, `<script>`, `<iframe>`, `<object>`, `<style>`, `on*` attributes, `innerHTML`, or unsafe URLs (`javascript:`, `vbscript:`, `file:`, `data:`).\n"
+  set md to md joined with "- **Maximum Nesting Depth:** `24` levels.\n"
+  set md to md joined with "- **WCAG AA Enforcement:** Text contrast `>= 4.5:1`, descriptive `alt` text on every non-decorative `Image`, valid heading hierarchy, and accessible interactive labels.\n"
+  set md to md joined with "- **Approved 20 Elements:** `Section`, `Container`, `Grid`, `Stack`, `Card`, `Heading`, `Text`, `RichText`, `Link`, `Button`, `Image`, `Icon`, `Form`, `Input`, `Select`, `Tabs`, `Accordion`, `Modal`, `Nav`, `ForEach`.\n\n"
+
+  set md to md joined with "## 4. Conditional Template Slots & Reusable Parts\n\n"
+  set md to md joined with "| Slot / Rule ID | Kind | Priority |\n|---|---|---|\n"
+  if has_map_key using doc, "templates"
+    for each tk in (collections.keys using (doc at "templates"))
+      set md to md joined with "| `" joined with tk joined with "` | template slot | 10 |\n"
+    end
+  end
+  if has_map_key using doc, "parts"
+    for each pk in (collections.keys using (doc at "parts"))
+      set md to md joined with "| `part:" joined with pk joined with "` | global part | 10 |\n"
+    end
+  end
+  if has_map_key using doc, "templateRegistry"
+    for each tr in (doc at "templateRegistry")
+      set tid to "rule"
+      if has_map_key using tr, "id"
+        set tid to text.from using (tr at "id")
+      end
+      set tslot to "home"
+      if has_map_key using tr, "slot"
+        set tslot to text.from using (tr at "slot")
+      end
+      set tprio to "10"
+      if has_map_key using tr, "priority"
+        set tprio to text.from using (tr at "priority")
+      end
+      set md to md joined with "| `" joined with tid joined with "` | conditional rule (`" joined with tslot joined with "`) | " joined with tprio joined with " |\n"
+    end
+  end
+
+  give back md
+end
+
+make persist_design_system_md using stmts, doc, override_md
+  set md to ""
+  if override_md is not nothing
+    set md to text.from using override_md
+  end
+  if (text.trim using md) is ""
+    set md to generate_design_system_md using doc
+  end
+  call cache.set using stmts.studio_cache, "design_system_md", md, 86400000
+  set ds_path to call get_design_system_path
+  try
+    call files.write_text using ds_path, md
+  catch err
+    set ignored to err.message
+  end
+  give back md
+end
+
+make create_revision_snapshot using stmts, doc, tokens_css, builder_css, author, summary, parent_id
+  set built to build_snapshot_from_doc using doc, tokens_css, builder_css
+  set chash to built.content_hash
+  set snap_str to json.stringify using built.snapshot
+  set latest to data.one using stmts.get_latest_revision, record {scope_key: "site"}
+
+  if parent_id is nothing and latest is not nothing
+    if latest.content_hash is chash
+      give back record {id: latest.id, revision_number: latest.revision_number, scope_key: latest.scope_key, author: latest.author, summary: latest.summary, content_hash: latest.content_hash, parent_revision_id: latest.parent_revision_id, created_at: latest.created_at, deduplicated: yes}
+    end
+  end
+
+  set next_num to 1
+  if latest is not nothing
+    set next_num to latest.revision_number plus 1
+  end
+  set now_iso to (call dates.now_utc).iso
+  call data.execute using stmts.insert_revision, record {revision_number: next_num, scope_key: "site", author: author, summary: summary, content_hash: chash, snapshot_json: snap_str, parent_revision_id: parent_id, created_at: now_iso}
+  set created to data.one using stmts.get_latest_revision, record {scope_key: "site"}
+  give back record {id: created.id, revision_number: created.revision_number, scope_key: created.scope_key, author: created.author, summary: created.summary, content_hash: created.content_hash, parent_revision_id: created.parent_revision_id, created_at: created.created_at, deduplicated: no}
+end
+
+make diff_keyed_maps using target_map, current_map, prefix
+  set added to []
+  set modified to []
+  set removed to []
+  set tkeys to collections.keys using target_map
+  set ckeys to collections.keys using current_map
+  for each tk in tkeys
+    if not (has_map_key using current_map, tk)
+      set added to collections.append using added, (prefix joined with tk)
+    otherwise
+      set a_str to json.stringify using (target_map at tk)
+      set b_str to json.stringify using (current_map at tk)
+      if a_str is not b_str
+        set modified to collections.append using modified, (prefix joined with tk)
+      end
+    end
+  end
+  for each ck in ckeys
+    if not (has_map_key using target_map, ck)
+      set removed to collections.append using removed, (prefix joined with ck)
+    end
+  end
+  give back record {added: added, modified: modified, removed: removed}
+end
+
+make compute_snapshot_diff using target_snap, current_snap
+  set t_tmpls to record {}
+  if has_map_key using target_snap, "templates"
+    set t_tmpls to target_snap at "templates"
+  end
+  set c_tmpls to record {}
+  if has_map_key using current_snap, "templates"
+    set c_tmpls to current_snap at "templates"
+  end
+  set tdiff to diff_keyed_maps using t_tmpls, c_tmpls, ""
+
+  set t_parts to record {}
+  if has_map_key using target_snap, "parts"
+    set t_parts to target_snap at "parts"
+  end
+  set c_parts to record {}
+  if has_map_key using current_snap, "parts"
+    set c_parts to current_snap at "parts"
+  end
+  set pdiff to diff_keyed_maps using t_parts, c_parts, "part:"
+
+  set all_tpl_added to tdiff.added
+  for each x in pdiff.added
+    set all_tpl_added to collections.append using all_tpl_added, x
+  end
+  set all_tpl_mod to tdiff.modified
+  for each x in pdiff.modified
+    set all_tpl_mod to collections.append using all_tpl_mod, x
+  end
+  set all_tpl_rem to tdiff.removed
+  for each x in pdiff.removed
+    set all_tpl_rem to collections.append using all_tpl_rem, x
+  end
+
+  set t_cls to record {}
+  if has_map_key using target_snap, "class_registry"
+    set t_cls to target_snap at "class_registry"
+  end
+  set c_cls to record {}
+  if has_map_key using current_snap, "class_registry"
+    set c_cls to current_snap at "class_registry"
+  end
+  set cls_diff to diff_keyed_maps using t_cls, c_cls, ""
+
+  set t_rules_map to {}
+  if has_map_key using target_snap, "conditional_rules"
+    for each r in (target_snap at "conditional_rules")
+      if has_map_key using r, "id"
+        set t_rules_map to collections.put using t_rules_map, (text.from using (r at "id")), r
+      end
+    end
+  end
+  set c_rules_map to {}
+  if has_map_key using current_snap, "conditional_rules"
+    for each r in (current_snap at "conditional_rules")
+      if has_map_key using r, "id"
+        set c_rules_map to collections.put using c_rules_map, (text.from using (r at "id")), r
+      end
+    end
+  end
+  set rules_diff to diff_keyed_maps using t_rules_map, c_rules_map, ""
+
+  set tok_changes to []
+  set t_theme to {}
+  if has_map_key using target_snap, "theme_tokens"
+    set t_theme to target_snap at "theme_tokens"
+  end
+  set c_theme to {}
+  if has_map_key using current_snap, "theme_tokens"
+    set c_theme to current_snap at "theme_tokens"
+  end
+  set t_base to {}
+  if has_map_key using t_theme, "tokens"
+    set t_base to t_theme at "tokens"
+  end
+  set c_base to {}
+  if has_map_key using c_theme, "tokens"
+    set c_base to c_theme at "tokens"
+  end
+  for each tk in (collections.keys using t_base)
+    set tv to text.from using (t_base at tk)
+    set cv to ""
+    if has_map_key using c_base, tk
+      set cv to text.from using (c_base at tk)
+    end
+    if tv is not cv
+      set entry to {"mode": "base", "token": tk, "from": cv, "to": tv}
+      set tok_changes to collections.append using tok_changes, entry
+    end
+  end
+  for each ck in (collections.keys using c_base)
+    if not (has_map_key using t_base, ck)
+      set entry to {"mode": "base", "token": ck, "from": (text.from using (c_base at ck)), "to": nothing}
+      set tok_changes to collections.append using tok_changes, entry
+    end
+  end
+
+  set tpl_count to (collections.length using all_tpl_added) plus (collections.length using all_tpl_mod) plus (collections.length using all_tpl_rem)
+  set rules_count to (collections.length using rules_diff.added) plus (collections.length using rules_diff.modified) plus (collections.length using rules_diff.removed)
+  set tok_count to collections.length using tok_changes
+  set cls_count to (collections.length using cls_diff.added) plus (collections.length using cls_diff.modified) plus (collections.length using cls_diff.removed)
+
+  give back record {templates: (record {added: all_tpl_added, modified: all_tpl_mod, removed: all_tpl_rem}), conditional_rules: rules_diff, theme_tokens: (record {changed: tok_changes}), class_registry: cls_diff, summary: (record {templatesChanged: tpl_count, rulesChanged: rules_count, tokensChanged: tok_count, classesChanged: cls_count, totalChanges: (tpl_count plus rules_count plus tok_count plus cls_count)})}
+end
+
 route "GET" "/_health"
-  give back server.json using 200, record {status: "ok", engine: "grex-visual"}
+  give back server.json using 200, record {status: "ok", engine: "grex-visual", version: "0.4.0"}
 end
 
 route "GET" "/"
@@ -332,28 +1028,307 @@ route "POST" "/api/studio/publish" using req
     if payload has "builderCss"
       set builder_css to text.from using (payload at "builderCss")
     end
-
-    set static_dir to call get_static_grex_dir
-    if tokens_css is not ""
-      call files.write_text using (static_dir joined with "/tokens.css"), tokens_css
+    if tokens_css is "" or builder_css is ""
+      set built_snap to build_snapshot_from_doc using doc, tokens_css, builder_css
+      set compiled to compile_css_from_snapshot using built_snap.snapshot
+      if tokens_css is ""
+        set tokens_css to compiled.tokens_css
+      end
+      if builder_css is ""
+        set builder_css to compiled.builder_css
+      end
     end
-    if builder_css is not ""
-      call files.write_text using (static_dir joined with "/builder.css"), builder_css
-    end
-    set css_hash to crypto.sha256_hex using builder_css
 
+    set author to "designer"
+    if payload has "author"
+      set raw_a to text.trim using (text.from using (payload at "author"))
+      if raw_a is not ""
+        set author to raw_a
+      end
+    end
+    set summary to "Published Studio layout & tokens"
+    if payload has "summary"
+      set raw_s to text.trim using (text.from using (payload at "summary"))
+      if raw_s is not ""
+        set summary to raw_s
+      end
+    end
+    set override_md to ""
+    if payload has "designSystemMd"
+      set override_md to text.from using (payload at "designSystemMd")
+    end
+
+    # Step 1: Write compiled CSS to /static/grex/ FIRST for zero FOUC
+    set css_hash to write_static_css_files using tokens_css, builder_css
+
+    # Step 2: Persist active draft + published layout in use data
     set doc_str to json.stringify using doc
     call upsert_stored_doc using stmts, "draft", doc_str, css_hash
     set pub_at to upsert_stored_doc using stmts, "published", doc_str, css_hash
+
+    # Step 3: Append immutable revision snapshot (deduplicated on identical content_hash)
+    set rev to create_revision_snapshot using stmts, doc, tokens_css, builder_css, author, summary, nothing
+
+    # Step 4: Regenerate GRAB-DESIGN-SYSTEM.md and invalidate use cache
+    call persist_design_system_md using stmts, doc, override_md
     set next_epoch to bump_live_epoch using stmts
 
     set tokens_url to safe_asset_url using "/static/grex/tokens.css"
     set builder_url to safe_asset_url using "/static/grex/builder.css"
 
-    give back server.json using 200, record {ok: yes, status: "published", published_at: pub_at, live_epoch: next_epoch, css_hash: css_hash, assets: record {tokens: tokens_url, builder: builder_url}}
+    give back server.json using 200, record {ok: yes, status: "published", published_at: pub_at, live_epoch: next_epoch, css_hash: css_hash, revision: rev, design_system_path: (call get_design_system_path), assets: (record {tokens: tokens_url, builder: builder_url})}
   catch err
     give back server.json using 400, record {ok: no, error: err.message}
   end
+end
+
+route "GET" "/api/revisions"
+  set rows to data.query using stmts.list_revisions, record {scope_key: "site"}
+  set head_id to nothing
+  if (collections.length using rows) is greater than 0
+    set head_id to (rows at 0).id
+  end
+  give back server.json using 200, record {ok: yes, revisions: rows, head_revision_id: head_id}
+end
+
+route "GET" "/api/revisions/{id}" using req
+  set rev_id to 0
+  try
+    set rev_id to text.to_integer using (text.trim using (text.from using req.params.id))
+  catch err
+    give back server.json using 404, record {ok: no, error: "Revision not found"}
+  end
+  set row to data.one using stmts.get_revision_by_id, record {id: rev_id}
+  if row is nothing
+    give back server.json using 404, record {ok: no, error: "Revision not found"}
+  end
+  set snap to json.parse using row.snapshot_json
+  set live to load_stored_doc using stmts, "published"
+  set live_doc to json.parse using live.doc_json
+  set live_snap to (build_snapshot_from_doc using live_doc, "", "").snapshot
+  set diff to compute_snapshot_diff using snap, live_snap
+  set rev_out to record {id: row.id, revision_number: row.revision_number, scope_key: row.scope_key, author: row.author, summary: row.summary, content_hash: row.content_hash, parent_revision_id: row.parent_revision_id, created_at: row.created_at, snapshot: snap}
+  give back server.json using 200, record {ok: yes, revision: rev_out, diff: diff}
+end
+
+route "POST" "/api/revisions/{id}/restore" using req
+  if not (verify_csrf using stmts, req)
+    give back server.json using 403, record {ok: no, error: "Invalid or missing X-CSRF-Token"}
+  end
+  set rev_id to 0
+  try
+    set rev_id to text.to_integer using (text.trim using (text.from using req.params.id))
+  catch err
+    give back server.json using 404, record {ok: no, error: "Revision not found"}
+  end
+  set row to data.one using stmts.get_revision_by_id, record {id: rev_id}
+  if row is nothing
+    give back server.json using 404, record {ok: no, error: "Revision not found"}
+  end
+
+  try
+    set snap to json.parse using row.snapshot_json
+    set doc to snapshot_to_doc using snap
+    set chk to validate_grex_doc using doc
+    if not chk.ok
+      give back server.json using 422, record {ok: no, error: chk.error}
+    end
+
+    set compiled to compile_css_from_snapshot using snap
+    set tokens_css to compiled.tokens_css
+    set builder_css to compiled.builder_css
+
+    set author to "designer"
+    try
+      set payload to server.parse_json using req
+      if payload has "author"
+        set raw_a to text.trim using (text.from using (payload at "author"))
+        if raw_a is not ""
+          set author to raw_a
+        end
+      end
+    catch parse_err
+      set author to "designer"
+    end
+
+    # Step 1 (Zero FOUC): Write compiled CSS to /static/grex/ BEFORE updating active templates or cache
+    set css_hash to write_static_css_files using tokens_css, builder_css
+
+    # Step 2: Update active draft and published layouts in use data
+    set doc_str to json.stringify using doc
+    call upsert_stored_doc using stmts, "draft", doc_str, css_hash
+    set pub_at to upsert_stored_doc using stmts, "published", doc_str, css_hash
+
+    # Step 3: Append a new forward revision preserving full immutable history
+    set restore_summary to "Restored from Revision #" joined with (text.from using row.revision_number)
+    set new_rev to create_revision_snapshot using stmts, doc, tokens_css, builder_css, author, restore_summary, row.id
+
+    # Step 4: Regenerate GRAB-DESIGN-SYSTEM.md and invalidate use cache
+    call persist_design_system_md using stmts, doc, ""
+    set next_epoch to bump_live_epoch using stmts
+
+    set tokens_url to safe_asset_url using "/static/grex/tokens.css"
+    set builder_url to safe_asset_url using "/static/grex/builder.css"
+
+    give back server.json using 200, record {ok: yes, status: "restored", restored_from_id: row.id, restored_from_number: row.revision_number, restored_at: pub_at, live_epoch: next_epoch, css_hash: css_hash, revision: new_rev, document: doc, assets: (record {tokens: tokens_url, builder: builder_url})}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "GET" "/api/design-system.md"
+  set cached to cache.get using stmts.studio_cache, "design_system_md"
+  set md to ""
+  if cached.found
+    set md to text.from using cached.value
+  otherwise
+    set live to load_stored_doc using stmts, "published"
+    set doc to json.parse using live.doc_json
+    set md to generate_design_system_md using doc
+    call cache.set using stmts.studio_cache, "design_system_md", md, 86400000
+  end
+  give back server.response using record {status: 200, headers: {"Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store"}, body: md}
+end
+
+route "POST" "/api/mcp/layout" using req
+  if not (verify_csrf using stmts, req)
+    give back server.json using 403, record {ok: no, error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set args to payload
+    if payload has "arguments"
+      set args to payload at "arguments"
+    end
+
+    set actor to "groxy-ai"
+    if args has "actor"
+      set raw_act to text.trim using (text.from using (args at "actor"))
+      if raw_act is not ""
+        set actor to raw_act
+      end
+    end
+    set summary to "Updated by Groxy AI"
+    if args has "summary"
+      set raw_sum to text.trim using (text.from using (args at "summary"))
+      if raw_sum is not ""
+        set summary to raw_sum
+      end
+    end
+
+    set draft_state to load_stored_doc using stmts, "draft"
+    set draft_doc to json.parse using draft_state.doc_json
+
+    set default_bg to "#ffffff"
+    if has_map_key using draft_doc, "theme"
+      set th to draft_doc at "theme"
+      if has_map_key using th, "tokens"
+        set tk to th at "tokens"
+        if has_map_key using tk, "--grex-color-bg"
+          set default_bg to text.from using (tk at "--grex-color-bg")
+        end
+      end
+    end
+
+    if args has "document"
+      set next_doc to args at "document"
+      set dchk to validate_grex_doc using next_doc
+      if not dchk.ok
+        give back server.json using 422, record {ok: no, code: "GREX-SCHEMA-001", mcp_error: (record {code: -32602, message: dchk.error}), error: dchk.error}
+      end
+      set tmpls to next_doc at "templates"
+      for each tslot in (collections.keys using tmpls)
+        set ares to audit_grex_tree_a11y using (tmpls at tslot), default_bg
+        if not ares.ok
+          give back server.json using 422, record {ok: no, code: ares.code, mcp_error: (record {code: -32602, message: ares.error}), error: ares.error}
+        end
+      end
+      set next_doc_str to json.stringify using next_doc
+      set now_iso to upsert_stored_doc using stmts, "draft", next_doc_str, ""
+      set cmd_obj to record {type: "applyAiLayout", slot: "all", actor: actor, summary: summary, before: draft_doc, after: next_doc, timestamp: now_iso}
+      call data.execute using stmts.insert_command, record {actor: actor, command_json: (json.stringify using cmd_obj), created_at: now_iso}
+      give back server.json using 200, record {ok: yes, actor: actor, slot: "all", command: cmd_obj, document: next_doc, saved_at: now_iso}
+    end
+
+    set target_slot to "home"
+    if args has "slot"
+      set target_slot to text.trim using (text.from using (args at "slot"))
+    end
+    set layout_node to nothing
+    if args has "layout"
+      set layout_node to args at "layout"
+    otherwise if args has "nextTree"
+      set layout_node to args at "nextTree"
+    otherwise if args has "tree"
+      set layout_node to args at "tree"
+    end
+    if layout_node is nothing
+      give back server.json using 422, record {ok: no, code: "GREX-SCHEMA-001", mcp_error: (record {code: -32602, message: "Missing layout node payload"}), error: "Missing layout node payload"}
+    end
+    set nchk to validate_grex_node using layout_node, 0
+    if not nchk.ok
+      give back server.json using 422, record {ok: no, code: "GREX-SCHEMA-001", mcp_error: (record {code: -32602, message: nchk.error}), error: nchk.error}
+    end
+    set a11y_chk to audit_grex_tree_a11y using layout_node, default_bg
+    if not a11y_chk.ok
+      give back server.json using 422, record {ok: no, code: a11y_chk.code, mcp_error: (record {code: -32602, message: a11y_chk.error}), error: a11y_chk.error}
+    end
+
+    set tmpls to draft_doc at "templates"
+    set parts to {}
+    if has_map_key using draft_doc, "parts"
+      set parts to draft_doc at "parts"
+    end
+
+    set before_tree to nothing
+    if text.starts_with using target_slot, "part:"
+      set pkey to text.replace using target_slot, "part:", ""
+      if not (has_map_key using parts, pkey)
+        give back server.json using 422, record {ok: no, code: "GREX-MCP-SLOT", mcp_error: (record {code: -32602, message: ("Unknown part slot: " joined with target_slot)}), error: ("Unknown part slot: " joined with target_slot)}
+      end
+      set before_tree to parts at pkey
+      set next_parts to map_put using parts, pkey, layout_node
+      set next_doc to map_put using draft_doc, "parts", next_parts
+    otherwise
+      if not (has_map_key using tmpls, target_slot)
+        give back server.json using 422, record {ok: no, code: "GREX-MCP-SLOT", mcp_error: (record {code: -32602, message: ("Unknown template slot: " joined with target_slot)}), error: ("Unknown template slot: " joined with target_slot)}
+      end
+      set before_tree to tmpls at target_slot
+      set next_tmpls to map_put using tmpls, target_slot, layout_node
+      set next_doc to map_put using draft_doc, "templates", next_tmpls
+    end
+
+    set next_doc_str to json.stringify using next_doc
+    set now_iso to upsert_stored_doc using stmts, "draft", next_doc_str, ""
+    set cmd_obj to record {type: "applyAiLayout", slot: target_slot, actor: actor, summary: summary, command: (record {type: "applyAiLayout", slot: target_slot, nextTree: layout_node, summary: summary}), inverse: (record {type: "applyAiLayout", slot: target_slot, nextTree: before_tree, _restore: yes}), before: before_tree, after: layout_node, timestamp: now_iso}
+    call data.execute using stmts.insert_command, record {actor: actor, command_json: (json.stringify using cmd_obj), created_at: now_iso}
+
+    give back server.json using 200, record {ok: yes, actor: actor, slot: target_slot, command: cmd_obj, document: next_doc, saved_at: now_iso}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "GET" "/api/studio/commands"
+  set rows to data.query using stmts.list_commands, record {limit_rows: 50}
+  set out to []
+  for each r in rows
+    set cmd_type to ""
+    set cmd_summary to ""
+    try
+      set parsed to json.parse using r.command_json
+      if has_map_key using parsed, "type"
+        set cmd_type to text.from using (parsed at "type")
+      end
+      if has_map_key using parsed, "summary"
+        set cmd_summary to text.from using (parsed at "summary")
+      end
+    catch err
+      set cmd_type to ""
+    end
+    set out to collections.append using out, (record {id: r.id, actor: r.actor, command_type: cmd_type, summary: cmd_summary, command_json: r.command_json, created_at: r.created_at})
+  end
+  give back server.json using 200, record {ok: yes, commands: out}
 end
 
 make build_sample_entries

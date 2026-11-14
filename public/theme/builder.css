@@ -324,10 +324,127 @@ body.grex-studio-body {
   gap: 0.35rem;
 }
 
-.grex-media-dialog {
+.grex-media-dialog,
+.grex-restore-dialog {
   border: 1px solid #0f172a;
   border-radius: 0.75rem;
   padding: 1rem;
   max-width: 34rem;
   width: 92vw;
+}
+
+.grex-ai-actor-badge {
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.grex-revisions-btn.is-active {
+  background: #047857;
+  color: #ffffff;
+  border-color: #047857;
+}
+
+.grex-revisions-drawer {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+  overflow-y: auto;
+  max-height: calc(100vh - 5rem);
+}
+
+.grex-revisions-header,
+.grex-revisions-header-actions,
+.grex-revision-actions,
+.grex-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.grex-revisions-timeline,
+.grex-diff-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.grex-revision-item {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.25rem;
+  background: #f8fafc;
+}
+
+.grex-revision-item.is-selected {
+  border-color: #047857;
+  background: #f0fdf4;
+}
+
+.grex-revision-select {
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.grex-revision-meta {
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.grex-revision-preview-banner {
+  border: 1px solid #0284c7;
+  background: #e0f2fe;
+  color: #075985;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.grex-revision-diff {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.grex-btn-primary {
+  background: #047857;
+  color: #ffffff;
+  border: 1px solid #047857;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.grex-design-system-details pre {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  max-height: 14rem;
+  overflow: auto;
 }

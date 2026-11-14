@@ -6,6 +6,7 @@
 
 import {
   effect,
+  signal,
   renderElement,
   setSafeText,
   Section,
@@ -229,6 +230,26 @@ export function createStudioHttpTransport(opts = {}) {
     getPreviewContext() {
       return getJson("/api/preview/context");
     },
+    listRevisions() {
+      return getJson("/api/revisions");
+    },
+    getRevision(id) {
+      return getJson(`/api/revisions/${encodeURIComponent(id)}`);
+    },
+    restoreRevision(id, payload = {}) {
+      return postJson(`/api/revisions/${encodeURIComponent(id)}/restore`, payload);
+    },
+    async getDesignSystemMarkdown() {
+      const resp = await fetch(`${baseUrl}/api/design-system.md`, { method: "GET" });
+      const text = await resp.text();
+      if (!resp.ok) {
+        return { ok: false, status: resp.status, error: text || `HTTP ${resp.status}`, text: "" };
+      }
+      return { ok: true, status: resp.status, text };
+    },
+    applyMcpLayout(payload) {
+      return postJson("/api/mcp/layout", payload);
+    },
   };
 }
 
@@ -325,6 +346,11 @@ export function mountBuilderStudio(options) {
     { tag: "span", attrs: { class: "grex-studio-a11y-badge" } },
     { document: doc }
   );
+  const aiActorBadge = doc.createElement("span");
+  aiActorBadge.id = "grex-ai-actor-badge";
+  aiActorBadge.className = "grex-ai-actor-badge";
+  aiActorBadge.setAttribute("role", "status");
+  aiActorBadge.hidden = true;
 
   const brandGroup = Stack(
     {
@@ -339,6 +365,7 @@ export function mountBuilderStudio(options) {
   brandGroup.element.appendChild(slotSelectEl);
   brandGroup.element.appendChild(statusBadge.element);
   brandGroup.element.appendChild(a11yBadge.element);
+  brandGroup.element.appendChild(aiActorBadge);
 
   const actionsGroup = Stack(
     {
@@ -467,9 +494,28 @@ export function mountBuilderStudio(options) {
   previewCtxBar.appendChild(previewEntrySelect);
   previewCtxBar.appendChild(previewTermSelect);
 
+  const revisionsDrawerOpen = signal(false);
+  const selectedRevisionDetail = signal(null);
+
+  const revisionsBtn = doc.createElement("button");
+  revisionsBtn.type = "button";
+  revisionsBtn.id = "studio-revisions-btn";
+  revisionsBtn.className = "grex-revisions-btn";
+  revisionsBtn.setAttribute("aria-expanded", "false");
+  revisionsBtn.setAttribute("aria-controls", "grex-revisions-drawer");
+  setSafeText(revisionsBtn, "Revisions");
+  revisionsBtn.addEventListener("click", () => {
+    const next = !revisionsDrawerOpen.peek();
+    revisionsDrawerOpen.set(next);
+    if (next && typeof store.loadRevisions === "function" && typeof transport.listRevisions === "function") {
+      void store.loadRevisions(transport);
+    }
+  });
+
   actionsGroup.element.appendChild(previewCtxBar);
   actionsGroup.element.appendChild(bpNav);
   actionsGroup.element.appendChild(themeModeBtn);
+  actionsGroup.element.appendChild(revisionsBtn);
   actionsGroup.element.appendChild(undoBtn.element);
   actionsGroup.element.appendChild(redoBtn.element);
   actionsGroup.element.appendChild(saveDraftBtn.element);
@@ -673,6 +719,18 @@ export function mountBuilderStudio(options) {
   inspectorAside.className = "grex-studio-inspector";
   inspectorAside.setAttribute("aria-label", "Element Inspector and Accessibility Audit");
 
+  // --- Accessible Revisions & Diff Drawer (Zero Wrapper <div>) ---
+  const revisionsDrawer = doc.createElement("aside");
+  revisionsDrawer.id = "grex-revisions-drawer";
+  revisionsDrawer.className = "grex-revisions-drawer";
+  revisionsDrawer.setAttribute("aria-label", "Revision History");
+  revisionsDrawer.hidden = true;
+
+  const restoreDialog = doc.createElement("dialog");
+  restoreDialog.id = "grex-restore-dialog";
+  restoreDialog.className = "grex-restore-dialog";
+  restoreDialog.setAttribute("aria-label", "Confirm Revision Restore");
+
   const workspace = Section(
     {
       id: "grex-studio-workspace",
@@ -686,9 +744,11 @@ export function mountBuilderStudio(options) {
   workspace.element.appendChild(leftAside);
   workspace.element.appendChild(previewSection);
   workspace.element.appendChild(inspectorAside);
+  workspace.element.appendChild(revisionsDrawer);
 
   root.appendChild(topbar.element);
   root.appendChild(workspace.element);
+  root.appendChild(restoreDialog);
 
   // --- Reactive Structure Tree Renderer ---
   function buildTreeList(node, parentId, siblingIndex, siblingCount) {
@@ -841,6 +901,297 @@ export function mountBuilderStudio(options) {
       );
       a11yBadge.element.className =
         totalErrs === 0 ? "grex-studio-a11y-badge is-pass" : "grex-studio-a11y-badge is-fail";
+
+      const aiNotice = store.lastAiActorNotice ? store.lastAiActorNotice.get() : null;
+      if (aiNotice) {
+        aiActorBadge.hidden = false;
+        setSafeText(aiActorBadge, `Updated by ${aiNotice.actor === "groxy-ai" ? "Groxy AI" : aiNotice.actor}`);
+      } else {
+        aiActorBadge.hidden = true;
+        setSafeText(aiActorBadge, "");
+      }
+
+      const isRevOpen = revisionsDrawerOpen.get();
+      revisionsDrawer.hidden = !isRevOpen;
+      revisionsBtn.setAttribute("aria-expanded", isRevOpen ? "true" : "false");
+      revisionsBtn.className = isRevOpen ? "grex-revisions-btn is-active" : "grex-revisions-btn";
+    })
+  );
+
+  function closeRestoreDialog() {
+    if (typeof restoreDialog.close === "function") {
+      restoreDialog.close();
+    } else {
+      restoreDialog.open = false;
+    }
+  }
+
+  function openRestoreConfirmation(rev) {
+    clearChildren(restoreDialog);
+    const dlgHead = Heading(
+      { props: { level: 3, text: `Restore Revision #${rev.revision_number}?` } },
+      { document: doc }
+    );
+    const dlgMsg = Text(
+      {
+        props: {
+          text:
+            `This will write compiled CSS to /static/grex/ first (zero FOUC), update active templates, ` +
+            `regenerate GRAB-DESIGN-SYSTEM.md, and append a new forward revision ("Restored from Revision #${rev.revision_number}").`,
+        },
+      },
+      { document: doc }
+    );
+    const btnRow = doc.createElement("section");
+    btnRow.className = "grex-dialog-actions";
+
+    const confirmBtn = doc.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.id = "studio-confirm-restore-btn";
+    confirmBtn.className = "grex-btn-primary";
+    setSafeText(confirmBtn, "Confirm Restore");
+    confirmBtn.addEventListener("click", async () => {
+      closeRestoreDialog();
+      if (typeof store.restoreRevision === "function") {
+        await store.restoreRevision(rev.id, transport);
+        selectedRevisionDetail.set(null);
+      }
+    });
+
+    const cancelBtn = doc.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.id = "studio-cancel-restore-btn";
+    setSafeText(cancelBtn, "Cancel");
+    cancelBtn.addEventListener("click", closeRestoreDialog);
+
+    btnRow.appendChild(confirmBtn);
+    btnRow.appendChild(cancelBtn);
+    restoreDialog.appendChild(dlgHead.element);
+    restoreDialog.appendChild(dlgMsg.element);
+    restoreDialog.appendChild(btnRow);
+
+    if (typeof restoreDialog.showModal === "function") {
+      restoreDialog.showModal();
+    } else {
+      restoreDialog.open = true;
+    }
+  }
+
+  function appendDiffList(parent, titleText, items, emptyText) {
+    const subHead = Heading({ props: { level: 4, text: titleText } }, { document: doc });
+    parent.appendChild(subHead.element);
+    const ul = doc.createElement("ul");
+    ul.className = "grex-diff-list";
+    if (!items || items.length === 0) {
+      const li = doc.createElement("li");
+      setSafeText(li, emptyText);
+      ul.appendChild(li);
+    } else {
+      for (const line of items) {
+        const li = doc.createElement("li");
+        setSafeText(li, line);
+        ul.appendChild(li);
+      }
+    }
+    parent.appendChild(ul);
+  }
+
+  disposers.push(
+    effect(() => {
+      if (!revisionsDrawerOpen.get()) {
+        return;
+      }
+      const revList = store.revisions ? store.revisions.get() : [];
+      const activePrev = store.activeRevisionPreview ? store.activeRevisionPreview.get() : null;
+      const detail = selectedRevisionDetail.get();
+      clearChildren(revisionsDrawer);
+
+      const headerEl = doc.createElement("header");
+      headerEl.className = "grex-revisions-header";
+      const titleEl = Heading({ props: { level: 2, text: "Revision History" } }, { document: doc });
+      const headerActions = doc.createElement("section");
+      headerActions.className = "grex-revisions-header-actions";
+
+      const refreshBtn = doc.createElement("button");
+      refreshBtn.type = "button";
+      refreshBtn.id = "studio-refresh-revisions-btn";
+      setSafeText(refreshBtn, "Refresh");
+      refreshBtn.addEventListener("click", () => {
+        if (typeof store.loadRevisions === "function") {
+          void store.loadRevisions(transport);
+        }
+      });
+
+      const closeDrawerBtn = doc.createElement("button");
+      closeDrawerBtn.type = "button";
+      closeDrawerBtn.id = "studio-close-revisions-btn";
+      closeDrawerBtn.setAttribute("aria-label", "Close Revision History");
+      setSafeText(closeDrawerBtn, "Close");
+      closeDrawerBtn.addEventListener("click", () => {
+        revisionsDrawerOpen.set(false);
+      });
+
+      headerActions.appendChild(refreshBtn);
+      headerActions.appendChild(closeDrawerBtn);
+      headerEl.appendChild(titleEl.element);
+      headerEl.appendChild(headerActions);
+      revisionsDrawer.appendChild(headerEl);
+
+      if (activePrev && activePrev.revision) {
+        const previewBanner = doc.createElement("section");
+        previewBanner.id = "grex-revision-preview-banner";
+        previewBanner.className = "grex-revision-preview-banner";
+        const bannerText = Text(
+          {
+            props: {
+              text: `Previewing Revision #${activePrev.revision.revision_number} in iframe (live visitors unaffected)`,
+            },
+          },
+          { document: doc }
+        );
+        const exitPreviewBtn = doc.createElement("button");
+        exitPreviewBtn.type = "button";
+        exitPreviewBtn.id = "studio-exit-revision-preview-btn";
+        setSafeText(exitPreviewBtn, "Exit Preview");
+        exitPreviewBtn.addEventListener("click", () => {
+          store.clearRevisionPreview();
+        });
+        previewBanner.appendChild(bannerText.element);
+        previewBanner.appendChild(exitPreviewBtn);
+        revisionsDrawer.appendChild(previewBanner);
+      }
+
+      if (!revList || revList.length === 0) {
+        const emptyRev = Text(
+          { props: { text: "No published revisions yet. Click Publish to record Revision #1." } },
+          { document: doc }
+        );
+        revisionsDrawer.appendChild(emptyRev.element);
+      } else {
+        const timeline = doc.createElement("ul");
+        timeline.id = "grex-revisions-timeline";
+        timeline.className = "grex-revisions-timeline";
+        for (const rev of revList) {
+          const li = doc.createElement("li");
+          li.className =
+            detail && detail.revision?.id === rev.id ? "grex-revision-item is-selected" : "grex-revision-item";
+          li.setAttribute("data-revision-id", String(rev.id));
+
+          const selectRevBtn = doc.createElement("button");
+          selectRevBtn.type = "button";
+          selectRevBtn.className = "grex-revision-select";
+          const shortHash = String(rev.content_hash || "").slice(0, 8);
+          setSafeText(
+            selectRevBtn,
+            `#${rev.revision_number} · ${rev.summary} (${rev.author}, sha256:${shortHash}…)`
+          );
+          selectRevBtn.addEventListener("click", async () => {
+            if (rev.snapshot && !transport?.getRevision) {
+              const diff = store.computeDiffAgainstCurrent(rev.snapshot);
+              selectedRevisionDetail.set({ revision: rev, snapshot: rev.snapshot, diff });
+              return;
+            }
+            if (typeof store.inspectRevision === "function" && typeof transport?.getRevision === "function") {
+              const res = await store.inspectRevision(rev.id, transport);
+              if (res.ok) {
+                selectedRevisionDetail.set(res);
+                return;
+              }
+            }
+            if (rev.snapshot) {
+              const diff = store.computeDiffAgainstCurrent(rev.snapshot);
+              selectedRevisionDetail.set({ revision: rev, snapshot: rev.snapshot, diff });
+            }
+          });
+          li.appendChild(selectRevBtn);
+
+          const metaLine = doc.createElement("span");
+          metaLine.className = "grex-revision-meta";
+          setSafeText(metaLine, `${rev.created_at || ""}`);
+          li.appendChild(metaLine);
+          timeline.appendChild(li);
+        }
+        revisionsDrawer.appendChild(timeline);
+      }
+
+      if (detail && detail.revision) {
+        const diffSection = doc.createElement("section");
+        diffSection.id = "grex-revision-diff";
+        diffSection.className = "grex-revision-diff";
+        diffSection.setAttribute("aria-label", "Revision Diff Summary");
+
+        const diffHead = Heading(
+          { props: { level: 3, text: `Diff for Revision #${detail.revision.revision_number}` } },
+          { document: doc }
+        );
+        diffSection.appendChild(diffHead.element);
+
+        const d = detail.diff || {};
+        const tplItems = [
+          ...(d.templates?.added || []).map((t) => `+ Template/Part: ${t}`),
+          ...(d.templates?.modified || []).map((t) => `~ Template/Part: ${t}`),
+          ...(d.templates?.removed || []).map((t) => `- Template/Part: ${t}`),
+        ];
+        const ruleItems = [
+          ...(d.conditional_rules?.added || []).map((r) => `+ Rule: ${r}`),
+          ...(d.conditional_rules?.modified || []).map((r) => `~ Rule: ${r}`),
+          ...(d.conditional_rules?.removed || []).map((r) => `- Rule: ${r}`),
+        ];
+        const tokItems = (d.theme_tokens?.changed || []).map(
+          (tc) => `${tc.mode} ${tc.token}: ${String(tc.from ?? "(unset)")} -> ${String(tc.to ?? "(unset)")}`
+        );
+        const clsItems = [
+          ...(d.class_registry?.added || []).map((c) => `+ Class: .grex-c-${c}`),
+          ...(d.class_registry?.modified || []).map((c) => `~ Class: .grex-c-${c}`),
+          ...(d.class_registry?.removed || []).map((c) => `- Class: .grex-c-${c}`),
+        ];
+
+        appendDiffList(diffSection, "Templates & Parts", tplItems, "No template or part differences.");
+        appendDiffList(diffSection, "Conditional Rules", ruleItems, "No conditional rule differences.");
+        appendDiffList(diffSection, "Theme Tokens (--grex-*)", tokItems, "No token changes.");
+        appendDiffList(diffSection, "Reusable Classes (.grex-c-*)", clsItems, "No class registry changes.");
+
+        const actionBar = doc.createElement("section");
+        actionBar.className = "grex-revision-actions";
+
+        const previewRevBtn = doc.createElement("button");
+        previewRevBtn.type = "button";
+        previewRevBtn.id = "studio-preview-revision-btn";
+        setSafeText(previewRevBtn, "Preview Revision");
+        previewRevBtn.disabled = !detail.snapshot;
+        previewRevBtn.addEventListener("click", () => {
+          if (detail.snapshot) {
+            store.previewRevision(detail);
+          }
+        });
+
+        const restoreRevBtn = doc.createElement("button");
+        restoreRevBtn.type = "button";
+        restoreRevBtn.id = "studio-restore-revision-btn";
+        restoreRevBtn.className = "grex-btn-primary";
+        setSafeText(restoreRevBtn, "Restore This Revision");
+        restoreRevBtn.addEventListener("click", () => {
+          openRestoreConfirmation(detail.revision);
+        });
+
+        actionBar.appendChild(previewRevBtn);
+        actionBar.appendChild(restoreRevBtn);
+        diffSection.appendChild(actionBar);
+        revisionsDrawer.appendChild(diffSection);
+      }
+
+      if (store.designSystemMarkdown) {
+        const dsDetails = doc.createElement("details");
+        dsDetails.className = "grex-design-system-details";
+        const dsSummary = doc.createElement("summary");
+        setSafeText(dsSummary, "GRAB-DESIGN-SYSTEM.md (AI Contract)");
+        const dsPre = doc.createElement("pre");
+        dsPre.id = "grex-design-system-preview";
+        setSafeText(dsPre, store.designSystemMarkdown.get());
+        dsDetails.appendChild(dsSummary);
+        dsDetails.appendChild(dsPre);
+        revisionsDrawer.appendChild(dsDetails);
+      }
     })
   );
 
@@ -1794,9 +2145,36 @@ export function mountBuilderStudio(options) {
     })
   );
 
+  if (typeof doc.addEventListener === "function") {
+    const onKeyDown = (ev) => {
+      if ((ev.ctrlKey || ev.metaKey) && String(ev.key || "").toLowerCase() === "z") {
+        const tag = String(ev.target?.localName || ev.target?.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") {
+          return;
+        }
+        if (typeof ev.preventDefault === "function") {
+          ev.preventDefault();
+        }
+        if (ev.shiftKey) {
+          store.redo();
+        } else {
+          store.undo();
+        }
+      }
+    };
+    doc.addEventListener("keydown", onKeyDown);
+    disposers.push(() => {
+      if (typeof doc.removeEventListener === "function") {
+        doc.removeEventListener("keydown", onKeyDown);
+      }
+    });
+  }
+
   return {
     previewClient,
     previewFrame,
+    revisionsDrawer,
+    restoreDialog,
     dispose() {
       previewClient.dispose();
       for (const fn of disposers) {

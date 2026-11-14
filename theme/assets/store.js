@@ -37,6 +37,14 @@ import {
   detectTemplateConflicts,
   resolveTemplateForContext,
 } from "./templates.js";
+import {
+  generateDesignSystemMarkdown,
+  validateAiLayoutPayload,
+} from "./design-system.js";
+import {
+  buildRevisionSnapshot,
+  computeRevisionDiff,
+} from "./revisions.js";
 
 export const BUILDER_BREAKPOINTS = Object.freeze({
   base: null,                    // Desktop >= 1025px (unwrapped base rules)
@@ -272,6 +280,9 @@ export function createBuilderStore(initialDoc, options = {}) {
   const lastError = signal(null);
   const lastSavedAt = signal(null);
   const lastPublishedAt = signal(null);
+  const revisions = signal(Array.isArray(options.revisions) ? cloneJson(options.revisions) : []);
+  const activeRevisionPreview = signal(null);
+  const lastAiActorNotice = signal(null);
 
   const serializeFullState = (slots, themeCfg, clsReg, tplReg) =>
     JSON.stringify({ slots, themeConfig: themeCfg, classRegistry: clsReg, templateRegistry: tplReg });
@@ -398,6 +409,15 @@ export function createBuilderStore(initialDoc, options = {}) {
     };
   });
 
+  const designSystemMarkdown = computed(() =>
+    generateDesignSystemMarkdown({
+      slots: documentTree.get(),
+      themeConfig: themeConfig.get(),
+      classRegistry: classRegistry.get(),
+      templateRegistry: templateRegistry.get(),
+    })
+  );
+
   function syncDirtyState(nextSlots, nextTheme, nextClasses, nextTemplates) {
     isDirty.set(
       serializeFullState(nextSlots, nextTheme, nextClasses, nextTemplates) !== savedBaselineJson
@@ -510,6 +530,17 @@ export function createBuilderStore(initialDoc, options = {}) {
       } else if (rawCommand.type === "replaceTree") {
         const slotRoot = nextState.slots[rawCommand.slot];
         selectedNodeId.set(getNodeId(slotRoot) || null);
+      } else if (rawCommand.type === "applyAiLayout") {
+        if (activeSlot.peek() === rawCommand.slot) {
+          const slotRoot = nextState.slots[rawCommand.slot];
+          selectedNodeId.set(getNodeId(slotRoot) || null);
+        }
+        lastAiActorNotice.set({
+          actor: record.actor,
+          slot: rawCommand.slot,
+          summary: rawCommand.summary || "Updated by Groxy AI",
+          timestamp: record.timestamp,
+        });
       } else if (rawCommand.type === "upsertClass") {
         const curActiveCls = activeClassName.peek();
         if (rawCommand.action === "delete" && curActiveCls === rawCommand.name) {
@@ -559,6 +590,9 @@ export function createBuilderStore(initialDoc, options = {}) {
       if (curCls && !(curCls in nextState.classRegistry)) {
         activeClassName.set(null);
       }
+      if (stepped.entry?.actor === "groxy-ai") {
+        lastAiActorNotice.set(null);
+      }
     });
     return true;
   }
@@ -598,6 +632,9 @@ export function createBuilderStore(initialDoc, options = {}) {
       const curCls = activeClassName.peek();
       if (curCls && !(curCls in nextState.classRegistry)) {
         activeClassName.set(null);
+      }
+      if (stepped.entry?.actor === "groxy-ai") {
+        lastAiActorNotice.set(null);
       }
     });
     return true;
@@ -815,12 +852,14 @@ export function createBuilderStore(initialDoc, options = {}) {
 
     const exportedDoc = exportDocument();
     const css = untrack(() => compiledCss.get());
+    const designSystemMd = untrack(() => designSystemMarkdown.get());
 
     try {
       const res = await transport.publish({
         document: exportedDoc,
         tokensCss: css.tokensCss,
         builderCss: css.builderCss,
+        designSystemMd,
       });
       if (res && res.ok === false) {
         const msg = res.error || "Publish failed.";
@@ -836,14 +875,194 @@ export function createBuilderStore(initialDoc, options = {}) {
         untrack(() => classRegistry.get()),
         untrack(() => templateRegistry.get())
       );
+      const revMeta = res?.data?.revision || res?.revision || null;
       batch(() => {
         isDirty.set(false);
         hasUnpublishedChanges.set(false);
         saveStatus.set("published");
         lastPublishedAt.set(new Date().toISOString());
         lastError.set(null);
+        if (revMeta && !revMeta.deduplicated) {
+          const prevRevs = revisions.peek() || [];
+          if (!prevRevs.some((r) => r.id === revMeta.id)) {
+            revisions.set([revMeta, ...prevRevs]);
+          }
+        }
       });
-      return { ok: true, result: res, css };
+      return { ok: true, result: res, css, designSystemMd };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      batch(() => {
+        saveStatus.set("error");
+        lastError.set(msg);
+      });
+      return { ok: false, error: msg };
+    }
+  }
+
+  function applyAiLayout(payload, meta = {}) {
+    const curSlots = untrack(() => documentTree.get());
+    const curTheme = untrack(() => themeConfig.get());
+    const validation = validateAiLayoutPayload(payload, {
+      themeConfig: curTheme,
+      parts: extractPartsMap(curSlots),
+      allowedSlots: Object.keys(curSlots),
+    });
+
+    if (!validation.ok) {
+      lastError.set(validation.error);
+      return validation;
+    }
+
+    const raw = payload && typeof payload === "object" && payload.arguments ? payload.arguments : payload;
+    const actor = typeof meta.actor === "string" && meta.actor ? meta.actor : String(raw.actor || "groxy-ai");
+    const summary = String(raw.summary || "Updated by Groxy AI");
+
+    const record = dispatch(
+      {
+        type: "applyAiLayout",
+        slot: validation.slot,
+        nextTree: validation.normalizedTree,
+        summary,
+      },
+      { actor }
+    );
+
+    return {
+      ok: true,
+      status: 200,
+      slot: validation.slot,
+      actor,
+      record,
+      issues: validation.issues || [],
+    };
+  }
+
+  function applyRestoredDocument(doc) {
+    const nextSlots = normalizeSlotDocument(doc);
+    const nextTheme = normalizeInitialThemeConfig(doc?.theme, DEFAULT_THEME_CONFIG);
+    const nextClasses = cloneJson(doc?.classes || {});
+    const nextTemplates = buildDefaultTemplateRegistry(nextSlots, doc?.templateRegistry || doc?.conditional_rules);
+
+    savedBaselineJson = serializeFullState(nextSlots, nextTheme, nextClasses, nextTemplates);
+
+    batch(() => {
+      documentTree.set(nextSlots);
+      themeConfig.set(nextTheme);
+      classRegistry.set(nextClasses);
+      templateRegistry.set(nextTemplates);
+      activeRevisionPreview.set(null);
+      isDirty.set(false);
+      hasUnpublishedChanges.set(false);
+      saveStatus.set("published");
+      lastPublishedAt.set(new Date().toISOString());
+      lastError.set(null);
+
+      const curSlot = activeSlot.peek();
+      const targetSlot = nextSlots[curSlot] ? curSlot : Object.keys(nextSlots)[0];
+      if (targetSlot !== curSlot) {
+        activeSlot.set(targetSlot);
+      }
+      const rootNode = nextSlots[targetSlot];
+      const curSel = selectedNodeId.peek();
+      if (!curSel || !findNodeLocation(rootNode, curSel)) {
+        selectedNodeId.set(getNodeId(rootNode) || null);
+      }
+      const curCls = activeClassName.peek();
+      if (curCls && !(curCls in nextClasses)) {
+        activeClassName.set(null);
+      }
+    });
+
+    return exportDocument();
+  }
+
+  function computeDiffAgainstCurrent(targetSnapshot) {
+    const currentSnapshot = buildRevisionSnapshot(exportDocument());
+    return computeRevisionDiff(targetSnapshot, currentSnapshot);
+  }
+
+  async function loadRevisions(transport) {
+    if (!transport || typeof transport.listRevisions !== "function") {
+      return { ok: false, revisions: [] };
+    }
+    const res = await transport.listRevisions();
+    if (res && res.ok !== false) {
+      const list = res.data?.revisions || res.revisions || [];
+      revisions.set(cloneJson(list));
+      return { ok: true, revisions: list };
+    }
+    return { ok: false, error: res?.error || "Failed to load revisions", revisions: [] };
+  }
+
+  async function inspectRevision(revisionId, transport) {
+    if (!transport || typeof transport.getRevision !== "function") {
+      return { ok: false, error: "transport.getRevision() is required." };
+    }
+    const res = await transport.getRevision(revisionId);
+    if (!res || res.ok === false) {
+      return { ok: false, error: res?.error || "Failed to load revision details." };
+    }
+    const payload = res.data || res;
+    const rev = payload.revision || payload;
+    const snapshot = rev.snapshot || payload.snapshot || null;
+    const diff =
+      payload.diff || (snapshot ? computeDiffAgainstCurrent(snapshot) : null);
+    return { ok: true, revision: rev, snapshot, diff };
+  }
+
+  function previewRevision(revisionPayload) {
+    if (!revisionPayload || typeof revisionPayload !== "object") {
+      activeRevisionPreview.set(null);
+      return null;
+    }
+    const snapshot = buildRevisionSnapshot(revisionPayload.snapshot || revisionPayload);
+    const diff = revisionPayload.diff || computeDiffAgainstCurrent(snapshot);
+    const next = {
+      revision: revisionPayload.revision || revisionPayload,
+      snapshot,
+      diff,
+    };
+    activeRevisionPreview.set(next);
+    return next;
+  }
+
+  function clearRevisionPreview() {
+    activeRevisionPreview.set(null);
+  }
+
+  async function restoreRevision(revisionId, transport) {
+    if (!transport || typeof transport.restoreRevision !== "function") {
+      throw new TypeError("restoreRevision(id, transport) requires transport.restoreRevision(id).");
+    }
+    saveStatus.set("publishing");
+    lastError.set(null);
+    try {
+      const res = await transport.restoreRevision(revisionId);
+      if (!res || res.ok === false) {
+        const msg = res?.error || "Revision restore failed.";
+        batch(() => {
+          saveStatus.set("error");
+          lastError.set(msg);
+        });
+        return { ok: false, error: msg };
+      }
+      const data = res.data || res;
+      if (data.document) {
+        applyRestoredDocument(data.document);
+      } else {
+        activeRevisionPreview.set(null);
+        saveStatus.set("published");
+      }
+      if (data.revision) {
+        const prevRevs = revisions.peek() || [];
+        if (!prevRevs.some((r) => r.id === data.revision.id)) {
+          revisions.set([data.revision, ...prevRevs]);
+        }
+      } else if (typeof transport.listRevisions === "function") {
+        await loadRevisions(transport);
+      }
+      return { ok: true, result: data };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       batch(() => {
@@ -873,6 +1092,9 @@ export function createBuilderStore(initialDoc, options = {}) {
     lastError,
     lastSavedAt,
     lastPublishedAt,
+    revisions,
+    activeRevisionPreview,
+    lastAiActorNotice,
     // Computed diagnostics & derivations
     activeSlotTree,
     selectedNode,
@@ -884,6 +1106,7 @@ export function createBuilderStore(initialDoc, options = {}) {
     resolvedActiveTemplate,
     contrastWarnings,
     compiledCss,
+    designSystemMarkdown,
     // Actions
     selectSlot,
     selectNode,
@@ -915,6 +1138,14 @@ export function createBuilderStore(initialDoc, options = {}) {
     bindMediaAsset,
     bindNavigationMenu,
     replaceSlotTree,
+    applyAiLayout,
+    applyRestoredDocument,
+    computeDiffAgainstCurrent,
+    loadRevisions,
+    inspectRevision,
+    previewRevision,
+    clearRevisionPreview,
+    restoreRevision,
     exportDocument,
     saveDraft,
     publish,

@@ -1,6 +1,6 @@
 # GREX-BUILDER-SPEC-004: Grex Theme Builder `v0.4` — Immutable Revisions, One-Click Rollback & `GRAB-DESIGN-SYSTEM.md` AI Guardrails
 
-**Status:** Specification in Review (Pending Owner Approval — Do NOT Write Application Code Yet)  
+**Status:** Complete & verified (`v0.4.0`)  
 **Milestone:** `v0.4` (`v0.4.0`) — Revision History Snapshots, One-Click Rollback & `GRAB-DESIGN-SYSTEM.md` AI Guardrails for `grab mcp`  
 **Upstream Baselines:**
 - **GRAB:** `v1.1.0` (`grab serve --allow-scripts`, `grab check`, `grab format <file>`, `grab mcp`, `server.asset`, `use cache`, `use data`, `use crypto`)

@@ -410,6 +410,87 @@ def build_v030_html() -> str:
 """
 
 
+def build_v040_html() -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Grex Theme Builder v0.4.0 — Plain-English Release Guide</title>
+  <style>{CSS}</style>
+</head>
+<body>
+  <header class="cover">
+    <span class="badge">Grex Theme Builder · Release v0.4.0</span>
+    <h1>Grex Theme Builder v0.4.0</h1>
+    <p class="subtitle">Immutable Publish Revisions, One-Click Rollback &amp; Live <code>GRAB-DESIGN-SYSTEM.md</code> / <code>grab mcp</code> AI Guardrails</p>
+    <p class="meta">
+      Built on GRAB v1.1.0 · GrabLab CMS v1.0.0 · Grex JS v1.0.0 · Exclusive mode: &quot;visual&quot;
+    </p>
+  </header>
+
+  <section class="callout">
+    <strong>Plain-English Overview:</strong> Grex Theme Builder v0.4.0 brings fearless publishing and safe AI co-design to the studio. Every Publish permanently records an immutable revision snapshot with deduplication, lets designers preview any past state side-by-side before restoring it with one click (CSS-first for zero flash of unstyled content), keeps a live <code>GRAB-DESIGN-SYSTEM.md</code> contract in sync with active tokens and classes, and enforces WCAG AA + structural guardrails on every incoming <code>grab mcp</code> / Groxy AI layout mutation.
+  </section>
+
+  <section>
+    <h2>1. What Changed in v0.4.0</h2>
+    <ul>
+      <li><strong>Immutable Publish Snapshots (<code>template_revisions</code>):</strong> Migration <code>migrations/002_revisions_schema.grab</code> introduces the append-only <code>template_revisions</code> table storing complete point-in-time snapshots (templates, parts, conditional display rules, <code>--grex-*</code> theme tokens, and <code>.grex-c-*</code> classes), author metadata, summary, timestamp, and canonical SHA-256 hash with automatic duplicate suppression when nothing changed since the previous revision.</li>
+      <li><strong>Semantic Revisions &amp; Diff Drawer + Safe Live Preview:</strong> A new zero-wrapper-<code>&lt;div&gt;</code> <strong>Revisions</strong> drawer in the top toolbar displays the revision timeline, structured human-readable diffs across templates, conditional rules, theme tokens, and reusable classes, and a <em>Preview This Revision</em> button that renders any past revision live inside <code>GrexPreviewBridge</code> without affecting public visitors or draft state.</li>
+      <li><strong>One-Click Zero-FOUC Rollback (<code>POST /api/revisions/&#123;id&#125;/restore</code>):</strong> Restoring a historical revision via the accessible confirmation <code>&lt;dialog&gt;</code> compiles and writes <code>tokens.css</code> and <code>builder.css</code> to <code>/static/grex/</code> <em>before</em> updating <code>studio_layouts</code> and bumping the <code>use cache</code> epoch, regenerates <code>GRAB-DESIGN-SYSTEM.md</code>, and appends a new forward revision (e.g., <em>Restored from Revision #N</em>) so prior history is never lost.</li>
+      <li><strong>Auto-Generated <code>GRAB-DESIGN-SYSTEM.md</code> Contract (<code>GET /api/design-system.md</code>):</strong> Every Publish and Restore automatically regenerates <code>GRAB-DESIGN-SYSTEM.md</code> containing active <code>--grex-*</code> tokens, reusable <code>.grex-c-*</code> class rules, approved 20-element semantic patterns, and conditional template rules so Groxy AI and <code>grab mcp</code> clients stay aligned with your design system.</li>
+      <li><strong><code>grab mcp</code> AI Layout Guardrails &amp; 1-Click Undo (<code>POST /api/mcp/layout</code>, <code>applyAiLayout</code>):</strong> All incoming AI layout changes are strictly validated against <code>validateElementNode()</code> and WCAG AA <code>auditAccessibility()</code> (rejecting forbidden <code>&lt;div&gt;</code> wrappers, <code>&lt;script&gt;</code> / <code>javascript:</code> vectors, depth &gt; 24, contrast &lt; 4.5:1, and missing <code>Image</code> <code>alt</code> text with HTTP <code>422</code> / JSON-RPC <code>-32602</code> before touching state). Valid AI edits commit to draft cleanly with <code>actor: &quot;groxy-ai&quot;</code>, surface a notice badge in the studio, and support instant <code>Ctrl+Z</code> / toolbar <strong>Undo</strong> rollback.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. New Studio Controls &amp; API Surface</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Purpose</th>
+          <th>Safety / Accessibility Guardrail</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Toolbar: <strong>Revisions</strong> + Timeline Drawer</td>
+          <td>Inspect snapshot hashes, structured diffs, and historical preview</td>
+          <td>Zero <code>&lt;div&gt;</code> semantic <code>&lt;aside&gt;</code> + origin-verified <code>GrexPreviewBridge</code></td>
+        </tr>
+        <tr>
+          <td>Modal <code>&lt;dialog&gt;</code>: <strong>Restore This Revision</strong></td>
+          <td>Executes one-click rollback and appends forward audit revision</td>
+          <td>CSS written to <code>/static/grex/</code> first for zero FOUC; CSRF required</td>
+        </tr>
+        <tr>
+          <td><code>GET /api/design-system.md</code> &amp; <code>storage/GRAB-DESIGN-SYSTEM.md</code></td>
+          <td>Publishes live design tokens, classes, element patterns &amp; conditional rules</td>
+          <td>Auto-updated on every Publish and Restore</td>
+        </tr>
+        <tr>
+          <td><code>POST /api/mcp/layout</code> &amp; <code>GET /api/studio/commands</code></td>
+          <td>Applies AI-authored layouts with reversible undo log (<code>actor: &quot;groxy-ai&quot;</code>)</td>
+          <td>Fail-closed <code>422</code> / <code>-32602</code> rejection on schema, XSS, or WCAG AA failure</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Verification &amp; Quality Gates</h2>
+    <ul>
+      <li><strong>Zero Wrapper <code>&lt;div&gt;</code> Bloat:</strong> Verified across the Revisions Drawer, confirmation dialog, AI actor notice, <code>GrexPreviewBridge</code> preview frames, and all 11 <code>.grab.html</code> templates.</li>
+      <li><strong>GRAB v1.1.0 Static &amp; Format Checks:</strong> <code>src/studio.grab</code>, <code>migrations/001_studio_schema.grab</code>, <code>migrations/002_revisions_schema.grab</code>, and all 11 <code>.grab.html</code> files pass <code>grab check</code> and byte-for-byte canonical <code>grab format</code>.</li>
+      <li><strong>Automated Test Suite:</strong> 20/20 Node unit, DOM, accessibility, command stack, revision diff, and AI guardrail tests plus all 5 live Grisp &amp; GrabLab CMS v1.0.0 integration gates pass at 100%.</li>
+    </ul>
+  </section>
+</body>
+</html>
+"""
+
+
 def main():
     HTML_DIR.mkdir(parents=True, exist_ok=True)
     PDF_DIR.mkdir(parents=True, exist_ok=True)
@@ -419,6 +500,7 @@ def main():
         ("Grex-Builder-v0.1.0-Guide", build_v010_html()),
         ("Grex-Builder-v0.2.0-Guide", build_v020_html()),
         ("Grex-Builder-v0.3.0-Guide", build_v030_html()),
+        ("Grex-Builder-v0.4.0-Guide", build_v040_html()),
     ]
     for stem, content in guides:
         html_path = HTML_DIR / f"{stem}.html"

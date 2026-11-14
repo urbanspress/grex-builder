@@ -1,0 +1,7 @@
+use data
+
+set db to data.open using "main"
+
+set migration to data.migrate using db, [record {version: 1, name: "grex_builder_studio_v01", steps: ["CREATE TABLE IF NOT EXISTS studio_layouts (slot_scope TEXT NOT NULL, status TEXT NOT NULL, document_json TEXT NOT NULL, css_hash TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL, PRIMARY KEY (slot_scope, status))", "CREATE TABLE IF NOT EXISTS studio_commands (id INTEGER PRIMARY KEY, actor TEXT NOT NULL, command_json TEXT NOT NULL, created_at TEXT NOT NULL)"]}, record {version: 2, name: "grex_builder_revisions_v04", steps: ["CREATE TABLE IF NOT EXISTS template_revisions (id INTEGER PRIMARY KEY, revision_number INTEGER NOT NULL, scope_key TEXT NOT NULL, author TEXT NOT NULL, summary TEXT NOT NULL, content_hash TEXT NOT NULL, snapshot_json TEXT NOT NULL, parent_revision_id INTEGER NULL, created_at TEXT NOT NULL)", "CREATE INDEX IF NOT EXISTS idx_template_revisions_scope ON template_revisions(scope_key, revision_number DESC)", "CREATE INDEX IF NOT EXISTS idx_template_revisions_hash ON template_revisions(scope_key, content_hash)"]}]
+
+show migration

@@ -11,6 +11,10 @@ import {
   registerElementType,
   ForEach,
   createPreviewBridge,
+  createTheme,
+  createClassManager,
+  compileElementStyles,
+  batch,
   signal,
   effect,
   renderNode,
@@ -20,6 +24,7 @@ import {
   extractPartsMap,
   getNodeElementType,
   getNodeId,
+  normalizeSlotDocument,
   toGrexJsNode,
 } from "./schema.js";
 import {
@@ -325,6 +330,7 @@ export function mountPreviewHost(options) {
     }
   });
 
+  const allowedOriginSet = new Set(allowedOrigins);
   const bridge = createPreviewBridge({
     allowedOrigins,
     targetWindow,
@@ -338,7 +344,85 @@ export function mountPreviewHost(options) {
     onError: options.onError,
   });
 
-  bridge.start();
+  function compileSnapshotStyles(snapshot, themeMode) {
+    const slots = normalizeSlotDocument({
+      templates: snapshot.templates || {},
+      parts: snapshot.parts || {},
+    });
+    const partsMap = extractPartsMap(slots);
+    const grexNodes = [];
+    for (const rootNode of Object.values(slots)) {
+      if (rootNode) {
+        grexNodes.push(toGrexJsNode(rootNode, partsMap, 0));
+      }
+    }
+    const themeCfg = snapshot.theme_tokens || snapshot.theme || { tokens: {}, modes: { light: {}, dark: {} } };
+    const tokensCss = createTheme(themeCfg).compileCss();
+    const classMgr = createClassManager({ prefix: "grex-c-" });
+    for (const [clsName, clsStyles] of Object.entries(snapshot.class_registry || snapshot.classes || {})) {
+      classMgr.registerClass(clsName, clsStyles || {});
+    }
+    const bpMap = {
+      base: null,
+      tablet: "(max-width: 1024px)",
+      mobile: "(max-width: 767px)",
+    };
+    const classesCss = classMgr.compileCss({ breakpoints: bpMap });
+    const elementsCss = compileElementStyles(grexNodes, { breakpoints: bpMap });
+    return {
+      slots,
+      styles: {
+        tokensCss,
+        classesCss,
+        elementsCss,
+        themeMode: themeMode === "dark" ? "dark" : "light",
+      },
+    };
+  }
+
+  function handleMessage(event) {
+    const payload = event && event.data;
+    if (payload && typeof payload === "object" && payload.type === "previewRevision") {
+      try {
+        if (!event || typeof event.origin !== "string" || !allowedOriginSet.has(event.origin)) {
+          throw new GrexSecurityError(
+            `Rejected previewRevision message from untrusted origin "${String(event && event.origin)}".`
+          );
+        }
+        if (payload.channel !== PREVIEW_CHANNEL) {
+          throw new GrexSecurityError("Rejected previewRevision message with invalid channel.");
+        }
+        const snapshot = payload.snapshot;
+        if (!snapshot || typeof snapshot !== "object") {
+          throw new GrexSecurityError("previewRevision requires a valid snapshot object.");
+        }
+        const compiled = compileSnapshotStyles(snapshot, payload.themeMode);
+        const targetSlot =
+          payload.slot && compiled.slots[payload.slot]
+            ? payload.slot
+            : treeSync.peek()?.slot && compiled.slots[treeSync.peek().slot]
+              ? treeSync.peek().slot
+              : "home";
+        batch(() => {
+          treeSync.set({ slot: targetSlot, slots: compiled.slots });
+          styleSync.set(compiled.styles);
+        });
+        return true;
+      } catch (err) {
+        if (typeof options.onError === "function") {
+          options.onError(err, event);
+        }
+        return false;
+      }
+    }
+    return bridge.handleMessage(event);
+  }
+
+  let listening = false;
+  if (targetWindow && typeof targetWindow.addEventListener === "function") {
+    targetWindow.addEventListener("message", handleMessage);
+    listening = true;
+  }
 
   return {
     channel: PREVIEW_CHANNEL,
@@ -347,9 +431,12 @@ export function mountPreviewHost(options) {
     styleSync,
     contextSync,
     selectedId,
-    handleMessage: bridge.handleMessage,
+    handleMessage,
     dispose() {
-      bridge.stop();
+      if (listening && targetWindow && typeof targetWindow.removeEventListener === "function") {
+        targetWindow.removeEventListener("message", handleMessage);
+        listening = false;
+      }
       stopStyleEffect();
       stopTreeEffect();
       stopSelEffect();
@@ -439,12 +526,24 @@ export function createStudioPreviewClient(options) {
     });
   }
 
+  function previewRevision(slot, snapshot, opts = {}) {
+    return send({
+      type: "previewRevision",
+      slot: slot || "home",
+      snapshot: cloneJson(snapshot),
+      themeMode: opts.themeMode === "dark" ? "dark" : "light",
+    });
+  }
+
   let stopStoreSync = null;
   if (options.store) {
     const store = options.store;
     const stopA = effect(() => {
       const slot = store.activeSlot.get();
       const slots = store.documentTree.get();
+      if (store.activeRevisionPreview && store.activeRevisionPreview.get()) {
+        return;
+      }
       syncTree(slot, slots);
     });
     const stopB = effect(() => {
@@ -454,6 +553,9 @@ export function createStudioPreviewClient(options) {
     const stopC = effect(() => {
       const css = store.compiledCss.get();
       const mode = store.activeThemeMode ? store.activeThemeMode.get() : "light";
+      if (store.activeRevisionPreview && store.activeRevisionPreview.get()) {
+        return;
+      }
       syncStyles({
         tokensCss: css.tokensCss,
         classesCss: css.classesCss || "",
@@ -466,11 +568,30 @@ export function createStudioPreviewClient(options) {
           syncContext(store.previewContext.get());
         })
       : () => {};
+    const stopE = store.activeRevisionPreview
+      ? effect(() => {
+          const revPrev = store.activeRevisionPreview.get();
+          const mode = store.activeThemeMode ? store.activeThemeMode.get() : "light";
+          if (revPrev && revPrev.snapshot) {
+            previewRevision(store.activeSlot.peek(), revPrev.snapshot, { themeMode: mode });
+          } else {
+            syncTree(store.activeSlot.peek(), store.documentTree.peek());
+            const css = store.compiledCss.peek();
+            syncStyles({
+              tokensCss: css.tokensCss,
+              classesCss: css.classesCss || "",
+              elementsCss: css.elementCss || "",
+              themeMode: mode,
+            });
+          }
+        })
+      : () => {};
     stopStoreSync = () => {
       stopA();
       stopB();
       stopC();
       stopD();
+      stopE();
     };
   }
 
@@ -486,6 +607,7 @@ export function createStudioPreviewClient(options) {
     syncSelected,
     syncStyles,
     syncContext,
+    previewRevision,
     dispose() {
       if (stopStoreSync) {
         stopStoreSync();
