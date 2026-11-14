@@ -16,10 +16,12 @@ Before designing, editing, or reviewing any file, read [GREX-BUILDER-EXPERT.md](
   1. Run `grab check` and `grab format` verification on any `.grab` / `.grab.html` files.
   2. Run the full automated unit, DOM, accessibility (`auditAccessibility()`), and GrabLab integration test suite with **100% passing results**.
   3. Verify zero wrapper `<div>` elements in all rendered canvas and editor outputs.
-- **Release Assets & Plain-English Walkthrough PDF:** Every versioned release (`v0.1.0` onward) must include:
-  - A plain-English walkthrough PDF (`docs/releases/pdf/GREX-BUILDER-v<X.Y.Z>-Guide.pdf`) explaining the release for non-coders.
-  - Packaged theme archive, `SHA256SUMS.txt`, and matching GitHub Release assets on `urbanspress/grex-builder`.
-- **Brand Naming Invariant:** Always write **Grex Theme Builder** in human-facing prose, headings, UI labels, PDF guides, and release notes, reserving `grex-builder` strictly for machine slugs (`urbanspress/grex-builder`, directory paths, `"slug": "grex-builder"`, and archive filenames).
+- **Two-Repository Workflow & Release Protection:**
+  - `origin` (`https://github.com/urbanspress/grex-builder.in.progress.git`): Active development repository for ongoing work, specifications, and in-progress milestone commits.
+  - `stable` (`https://github.com/urbanspress/grex-builder.stable.git`): Production release repository for 100% verified milestone releases only.
+  - **Strict `stable` Protection:** Push work-in-progress commits, drafts, and specs ONLY to `origin` (`urbanspress/grex-builder.in.progress`). Pushing to `stable` (`urbanspress/grex-builder.stable`) is strictly forbidden unless the milestone is 100% `Complete` in `docs/ROADMAP.md`, all verification gates pass 100%, and `HANDOFF.md` records no pending milestone tasks.
+  - **Synchronized Releases & Plain-English Walkthrough PDF:** Whenever a completed milestone (`v0.1.0` onward) is promoted to `stable`, push `main` and annotated version tags in ascending chronological order to both `origin` and `stable`, generate the plain-English walkthrough PDF (`docs/releases/pdf/GREX-BUILDER-v<X.Y.Z>-Guide.pdf`), packaged theme archive, and `SHA256SUMS.txt`, and publish/attach matching GitHub Releases and assets to **both** repositories (`urbanspress/grex-builder.in.progress` and `urbanspress/grex-builder.stable`).
+- **Brand Naming Invariant:** Always write **Grex Theme Builder** in human-facing prose, headings, UI labels, PDF guides, and release notes, reserving `grex-builder` strictly for machine slugs (`urbanspress/grex-builder.in.progress`, `urbanspress/grex-builder.stable`, directory paths, `"slug": "grex-builder"`, and archive filenames).
 
 ---
 
