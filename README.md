@@ -38,7 +38,7 @@ python tests/integration_e2e.py
 ---
 
 ## Current Status
-- **Repositories:** `urbanspress/grex-builder.in.progress` (active development) / `urbanspress/grex-builder.stable` (verified releases)
+- **Repositories:** `urbanspress/grex-builder.progress` (active development) / `urbanspress/grex-builder.stable` (verified releases)
 - **Latest Release:** `v0.2.0` — Global Theme Token Studio (`createTheme`), Bricks-Style Reusable Class Manager (`createClassManager`), Responsive Breakpoints, & Structured Visual Inspector (**Complete**; see [Grex-Builder-v0.2.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.2.0-Guide.pdf)).
 - **Governance & Roadmap:** See [GREX-BUILDER-EXPERT.md](GREX-BUILDER-EXPERT.md), [AGENTS.md](AGENTS.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 
