@@ -9,13 +9,11 @@ import {
   GrexSecurityError,
   ELEMENT_REGISTRY,
   registerElementType,
-  Section,
+  ForEach,
   createPreviewBridge,
   signal,
   effect,
   renderNode,
-  normalizeStyleProperty,
-  validateTokenValue,
 } from "./grex.js";
 import {
   cloneJson,
@@ -24,27 +22,125 @@ import {
   getNodeId,
   toGrexJsNode,
 } from "./schema.js";
+import {
+  DEFAULT_PREVIEW_CONTEXT,
+  filterPreviewEntries,
+  resolveDynamicProps,
+} from "./templates.js";
 
 if (!("ForEach" in ELEMENT_REGISTRY)) {
-  registerElementType("ForEach", (config = {}, options = {}) => {
-    const allowedTag = ["section", "ul", "ol", "tbody"].includes(String(config.tag || "").toLowerCase())
-      ? String(config.tag).toLowerCase()
-      : "section";
-    const sectionTag = allowedTag === "ul" || allowedTag === "ol" || allowedTag === "tbody" ? "section" : allowedTag;
-    const mergedAttrs = {
-      ...(config.attrs || {}),
+  registerElementType("ForEach", (config = {}, options = {}) => ForEach(config, options));
+}
+
+function buildPreviewGrexTree(rawNode, partsMap, ctx, depth = 0) {
+  if (!rawNode || typeof rawNode !== "object" || depth > 24) {
+    return rawNode;
+  }
+  const elType = getNodeElementType(rawNode);
+
+  if (elType === "TemplatePart") {
+    const partName = String(rawNode?.props?.name || "").trim();
+    if (partName && partsMap && partsMap[partName]) {
+      return buildPreviewGrexTree(partsMap[partName], partsMap, ctx, depth + 1);
+    }
+    return toGrexJsNode(rawNode, partsMap, depth);
+  }
+
+  const isLoop =
+    elType === "ForEach" ||
+    (rawNode.queryLoop && rawNode.queryLoop.enabled === true && ["Grid", "Stack", "Section"].includes(elType));
+
+  if (isLoop) {
+    const queryCfg = rawNode.queryLoop?.enabled
+      ? rawNode.queryLoop
+      : rawNode.props?.query || { per_page: 6 };
+    const { items } = filterPreviewEntries(ctx?.entries || [], queryCfg);
+    const parentType = elType === "ForEach" ? "Section" : elType;
+    const baseGrex = toGrexJsNode(
+      { ...rawNode, element: parentType, children: [] },
+      partsMap,
+      depth
+    );
+    baseGrex.attrs = {
+      ...(baseGrex.attrs || {}),
       "data-grex-foreach": "query",
     };
-    return Section(
-      {
-        ...config,
-        tag: sectionTag,
-        attrs: mergedAttrs,
-        props: { label: config.props?.label || "Query Loop" },
+    const itemTemplate =
+      Array.isArray(rawNode.children) && rawNode.children.length > 0
+        ? rawNode.children[0]
+        : partsMap.card || {
+            id: `${getNodeId(rawNode) || "loop"}-item`,
+            element: "Card",
+            tag: "article",
+            props: { label: "{{ entry.title }}" },
+            children: [
+              {
+                id: `${getNodeId(rawNode) || "loop"}-item-title`,
+                element: "Heading",
+                tag: "h3",
+                props: { level: 3, text: "{{ entry.title }}" },
+              },
+              {
+                id: `${getNodeId(rawNode) || "loop"}-item-excerpt`,
+                element: "Text",
+                tag: "p",
+                props: { text: "{{ entry.excerpt }}" },
+              },
+            ],
+          };
+
+    return {
+      type: "ForEach",
+      parent: baseGrex,
+      items,
+      key: (item, idx) => (item && item.id != null ? String(item.id) : `idx-${idx}`),
+      render: (itemSig) => {
+        const item = typeof itemSig?.get === "function" ? itemSig.get() : itemSig;
+        const itemCtx = { ...ctx, entry: item || {} };
+        return buildPreviewGrexTree(itemTemplate, partsMap, itemCtx, depth + 1);
       },
-      options
+      empty: () => ({
+        type: "Text",
+        tag: "p",
+        props: { text: queryCfg.empty_text || "No matching entries found." },
+      }),
+    };
+  }
+
+  const grexNode = toGrexJsNode({ ...rawNode, children: [] }, partsMap, depth);
+  if (ctx) {
+    if (rawNode.bindings && typeof rawNode.bindings === "object") {
+      grexNode.props = { ...(grexNode.props || {}) };
+      for (const [bKey, bVal] of Object.entries(rawNode.bindings)) {
+        if (typeof bVal === "string" && bVal !== "") {
+          grexNode.props[bKey] = bVal;
+        }
+      }
+    }
+    grexNode.props = resolveDynamicProps(grexNode.props, ctx);
+  }
+
+  if (grexNode.type === "Nav") {
+    const loc = String(rawNode.props?.location || "primary").toLowerCase();
+    const menuItems = ctx?.menus?.[loc];
+    if (Array.isArray(menuItems) && menuItems.length > 0 && (!Array.isArray(grexNode.props.items) || grexNode.props.items.length === 0)) {
+      grexNode.props.items = menuItems.map((m) => ({
+        href: m.href || m.url || "/",
+        text: m.text || m.label || "Link",
+      }));
+    }
+    if (ctx?.path) {
+      grexNode.props.activePath = ctx.path;
+    }
+  }
+
+  if (Array.isArray(rawNode.children) && rawNode.children.length > 0) {
+    grexNode.children = rawNode.children.map((ch) =>
+      buildPreviewGrexTree(ch, partsMap, ctx, depth + 1)
     );
-  });
+  }
+
+  return grexNode;
 }
 
 function assertValidAllowedOrigins(allowedOrigins) {
@@ -73,6 +169,10 @@ function markNodeIds(domEl, node, partsMap) {
   const nid = getNodeId(node);
   if (nid && typeof domEl.setAttribute === "function") {
     domEl.setAttribute("data-grex-id", nid);
+  }
+  const elType = getNodeElementType(node);
+  if (elType === "ForEach" || (node.queryLoop && node.queryLoop.enabled === true)) {
+    return;
   }
   if (Array.isArray(node.children) && Array.isArray(domEl.children)) {
     const domKids = Array.from(domEl.children);
@@ -157,12 +257,16 @@ export function mountPreviewHost(options) {
       themeMode: "light",
     }
   );
+  const contextSync = signal(
+    options.initialContext ? cloneJson(options.initialContext) : null
+  );
   const selectedId = signal(null);
 
   let currentDispose = null;
 
   function renderPreviewTree() {
     const state = treeSync.get();
+    const ctx = contextSync.get();
     if (!state || !state.slots || !state.slots[state.slot]) {
       return;
     }
@@ -174,7 +278,7 @@ export function mountPreviewHost(options) {
 
     const slotNode = state.slots[state.slot];
     const partsMap = extractPartsMap(state.slots);
-    const grexTree = toGrexJsNode(slotNode, partsMap, 0);
+    const grexTree = buildPreviewGrexTree(slotNode, partsMap, ctx, 0);
     const rendered = renderNode(grexTree, { document: doc });
     currentDispose = rendered.dispose;
 
@@ -228,6 +332,7 @@ export function mountPreviewHost(options) {
     signals: {
       treeSync,
       styleSync,
+      contextSync,
       selectedId,
     },
     onError: options.onError,
@@ -240,6 +345,7 @@ export function mountPreviewHost(options) {
     bridge,
     treeSync,
     styleSync,
+    contextSync,
     selectedId,
     handleMessage: bridge.handleMessage,
     dispose() {
@@ -325,6 +431,14 @@ export function createStudioPreviewClient(options) {
     });
   }
 
+  function syncContext(ctxPayload) {
+    return send({
+      type: "patch-signal",
+      key: "contextSync",
+      value: cloneJson(ctxPayload || DEFAULT_PREVIEW_CONTEXT),
+    });
+  }
+
   let stopStoreSync = null;
   if (options.store) {
     const store = options.store;
@@ -347,10 +461,16 @@ export function createStudioPreviewClient(options) {
         themeMode: mode,
       });
     });
+    const stopD = store.previewContext
+      ? effect(() => {
+          syncContext(store.previewContext.get());
+        })
+      : () => {};
     stopStoreSync = () => {
       stopA();
       stopB();
       stopC();
+      stopD();
     };
   }
 
@@ -365,6 +485,7 @@ export function createStudioPreviewClient(options) {
     syncTree,
     syncSelected,
     syncStyles,
+    syncContext,
     dispose() {
       if (stopStoreSync) {
         stopStoreSync();

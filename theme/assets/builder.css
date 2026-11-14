@@ -272,3 +272,62 @@ body.grex-studio-body {
   font-size: 0.85rem;
   margin: 0.5rem 0;
 }
+
+.grex-preview-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.grex-templates-panel,
+.grex-inspector-subpanel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.grex-inspector-subpanel {
+  padding: 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+}
+
+.grex-template-card {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  display: grid;
+  gap: 0.4rem;
+  background: #ffffff;
+}
+
+.grex-template-card.is-active {
+  border-color: #047857;
+  background: #f0fdf4;
+}
+
+.grex-template-create {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border: 1px dashed #94a3b8;
+  border-radius: 0.5rem;
+}
+
+.grex-binding-chips,
+.grex-media-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0.35rem 0 0 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.grex-media-dialog {
+  border: 1px solid #0f172a;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  max-width: 34rem;
+  width: 92vw;
+}

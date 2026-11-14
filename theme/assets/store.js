@@ -31,6 +31,12 @@ import {
   findNodeLocation,
   VALID_BREAKPOINTS,
 } from "./commands.js";
+import {
+  DEFAULT_PREVIEW_CONTEXT,
+  buildDefaultTemplateRegistry,
+  detectTemplateConflicts,
+  resolveTemplateForContext,
+} from "./templates.js";
 
 export const BUILDER_BREAKPOINTS = Object.freeze({
   base: null,                    // Desktop >= 1025px (unwrapped base rules)
@@ -241,12 +247,21 @@ export function createBuilderStore(initialDoc, options = {}) {
   const initialClassRegistry = cloneJson(
     options.classRegistry || initialDoc?.classes || {}
   );
+  const initialTemplateRegistry = buildDefaultTemplateRegistry(
+    initialSlots,
+    options.templateRegistry || initialDoc?.templateRegistry
+  );
+  const initialPreviewContext = cloneJson(
+    options.previewContext || DEFAULT_PREVIEW_CONTEXT
+  );
 
   const activeSlot = signal(startSlot);
   const documentTree = signal(initialSlots);
   const themeConfig = signal(initialThemeConfig);
   const activeThemeMode = signal(options.initialThemeMode === "dark" ? "dark" : "light");
   const classRegistry = signal(initialClassRegistry);
+  const templateRegistry = signal(initialTemplateRegistry);
+  const previewContext = signal(initialPreviewContext);
   const activeClassName = signal(null);
   const activeBreakpoint = signal("base");
   const selectedNodeId = signal(getNodeId(initialSlots[startSlot]) || null);
@@ -258,10 +273,15 @@ export function createBuilderStore(initialDoc, options = {}) {
   const lastSavedAt = signal(null);
   const lastPublishedAt = signal(null);
 
-  const serializeFullState = (slots, themeCfg, clsReg) =>
-    JSON.stringify({ slots, themeConfig: themeCfg, classRegistry: clsReg });
+  const serializeFullState = (slots, themeCfg, clsReg, tplReg) =>
+    JSON.stringify({ slots, themeConfig: themeCfg, classRegistry: clsReg, templateRegistry: tplReg });
 
-  let savedBaselineJson = serializeFullState(initialSlots, initialThemeConfig, initialClassRegistry);
+  let savedBaselineJson = serializeFullState(
+    initialSlots,
+    initialThemeConfig,
+    initialClassRegistry,
+    initialTemplateRegistry
+  );
 
   const activeSlotTree = computed(() => {
     const slot = activeSlot.get();
@@ -316,12 +336,27 @@ export function createBuilderStore(initialDoc, options = {}) {
       }
     }
 
+    const conflicts = detectTemplateConflicts(templateRegistry.get());
+    for (const conflict of conflicts) {
+      errors.push({ slot: conflict.slot, ...conflict });
+    }
+
     return {
       ok: errors.length === 0,
       errors,
       warnings,
+      conflicts,
       bySlot,
     };
+  });
+
+  const templateConflicts = computed(() => detectTemplateConflicts(templateRegistry.get()));
+
+  const resolvedActiveTemplate = computed(() => {
+    const tpls = templateRegistry.get();
+    const slot = activeSlot.get();
+    const cleanSlot = slot.startsWith("part:") ? slot.slice(5) : slot;
+    return resolveTemplateForContext(tpls, cleanSlot, previewContext.get());
   });
 
   const contrastWarnings = computed(() =>
@@ -363,8 +398,10 @@ export function createBuilderStore(initialDoc, options = {}) {
     };
   });
 
-  function syncDirtyState(nextSlots, nextTheme, nextClasses) {
-    isDirty.set(serializeFullState(nextSlots, nextTheme, nextClasses) !== savedBaselineJson);
+  function syncDirtyState(nextSlots, nextTheme, nextClasses, nextTemplates) {
+    isDirty.set(
+      serializeFullState(nextSlots, nextTheme, nextClasses, nextTemplates) !== savedBaselineJson
+    );
   }
 
   function selectSlot(slotName) {
@@ -423,11 +460,19 @@ export function createBuilderStore(initialDoc, options = {}) {
     return clean;
   }
 
+  function setPreviewContext(patch) {
+    const cur = previewContext.peek();
+    const next = { ...cur, ...(patch || {}) };
+    previewContext.set(next);
+    return next;
+  }
+
   function dispatch(rawCommand, meta = {}) {
     const currentState = untrack(() => ({
       slots: documentTree.get(),
       themeConfig: themeConfig.get(),
       classRegistry: classRegistry.get(),
+      templateRegistry: templateRegistry.get(),
     }));
     const currentHistory = untrack(() => history.get());
 
@@ -438,8 +483,14 @@ export function createBuilderStore(initialDoc, options = {}) {
       documentTree.set(nextState.slots);
       themeConfig.set(nextState.themeConfig);
       classRegistry.set(nextState.classRegistry);
+      templateRegistry.set(nextState.templateRegistry);
       history.set(nextHistory);
-      syncDirtyState(nextState.slots, nextState.themeConfig, nextState.classRegistry);
+      syncDirtyState(
+        nextState.slots,
+        nextState.themeConfig,
+        nextState.classRegistry,
+        nextState.templateRegistry
+      );
       hasUnpublishedChanges.set(true);
       lastError.set(null);
       if (saveStatus.peek() === "error" || saveStatus.peek() === "published" || saveStatus.peek() === "saved") {
@@ -477,6 +528,7 @@ export function createBuilderStore(initialDoc, options = {}) {
       slots: documentTree.get(),
       themeConfig: themeConfig.get(),
       classRegistry: classRegistry.get(),
+      templateRegistry: templateRegistry.get(),
     }));
     const currentHistory = untrack(() => history.get());
     const stepped = commandStack.stepUndo(currentState, currentHistory);
@@ -488,8 +540,14 @@ export function createBuilderStore(initialDoc, options = {}) {
       documentTree.set(nextState.slots);
       themeConfig.set(nextState.themeConfig);
       classRegistry.set(nextState.classRegistry);
+      templateRegistry.set(nextState.templateRegistry);
       history.set(stepped.nextHistory);
-      syncDirtyState(nextState.slots, nextState.themeConfig, nextState.classRegistry);
+      syncDirtyState(
+        nextState.slots,
+        nextState.themeConfig,
+        nextState.classRegistry,
+        nextState.templateRegistry
+      );
       hasUnpublishedChanges.set(true);
       lastError.set(null);
       const curSlotRoot = nextState.slots[activeSlot.peek()];
@@ -510,6 +568,7 @@ export function createBuilderStore(initialDoc, options = {}) {
       slots: documentTree.get(),
       themeConfig: themeConfig.get(),
       classRegistry: classRegistry.get(),
+      templateRegistry: templateRegistry.get(),
     }));
     const currentHistory = untrack(() => history.get());
     const stepped = commandStack.stepRedo(currentState, currentHistory);
@@ -521,8 +580,14 @@ export function createBuilderStore(initialDoc, options = {}) {
       documentTree.set(nextState.slots);
       themeConfig.set(nextState.themeConfig);
       classRegistry.set(nextState.classRegistry);
+      templateRegistry.set(nextState.templateRegistry);
       history.set(stepped.nextHistory);
-      syncDirtyState(nextState.slots, nextState.themeConfig, nextState.classRegistry);
+      syncDirtyState(
+        nextState.slots,
+        nextState.themeConfig,
+        nextState.classRegistry,
+        nextState.templateRegistry
+      );
       hasUnpublishedChanges.set(true);
       lastError.set(null);
       const curSlotRoot = nextState.slots[activeSlot.peek()];
@@ -627,6 +692,38 @@ export function createBuilderStore(initialDoc, options = {}) {
     );
   }
 
+  function setTemplateConditions(templateId, conditions, priority, meta = {}) {
+    return dispatch({ type: "setTemplateConditions", templateId, conditions, priority }, meta);
+  }
+
+  function createTemplate(templateSpec, meta = {}) {
+    return dispatch({ type: "upsertTemplate", action: "create", template: templateSpec }, meta);
+  }
+
+  function deleteTemplate(templateId, meta = {}) {
+    return dispatch({ type: "upsertTemplate", action: "delete", templateId }, meta);
+  }
+
+  function configureQueryLoop(nodeId, queryLoop, meta = {}) {
+    const slot = activeSlot.peek();
+    return dispatch({ type: "configureQueryLoop", slot, nodeId, queryLoop }, meta);
+  }
+
+  function bindDynamicField(nodeId, prop, token, meta = {}) {
+    const slot = activeSlot.peek();
+    return dispatch({ type: "bindDynamicField", slot, nodeId, prop, token }, meta);
+  }
+
+  function bindMediaAsset(nodeId, mediaPayload, meta = {}) {
+    const slot = activeSlot.peek();
+    return dispatch({ type: "bindMediaAsset", slot, nodeId, ...(mediaPayload || {}) }, meta);
+  }
+
+  function bindNavigationMenu(nodeId, location, items = undefined, meta = {}) {
+    const slot = activeSlot.peek();
+    return dispatch({ type: "bindNavigationMenu", slot, nodeId, location, items }, meta);
+  }
+
   function replaceSlotTree(slot, nextTree, meta = {}) {
     return dispatch({ type: "replaceTree", slot, nextTree }, meta);
   }
@@ -637,6 +734,7 @@ export function createBuilderStore(initialDoc, options = {}) {
       {
         theme: untrack(() => themeConfig.get()),
         classes: untrack(() => classRegistry.get()),
+        templateRegistry: untrack(() => templateRegistry.get()),
       }
     );
   }
@@ -676,7 +774,8 @@ export function createBuilderStore(initialDoc, options = {}) {
       savedBaselineJson = serializeFullState(
         untrack(() => documentTree.get()),
         untrack(() => themeConfig.get()),
-        untrack(() => classRegistry.get())
+        untrack(() => classRegistry.get()),
+        untrack(() => templateRegistry.get())
       );
       batch(() => {
         isDirty.set(false);
@@ -734,7 +833,8 @@ export function createBuilderStore(initialDoc, options = {}) {
       savedBaselineJson = serializeFullState(
         untrack(() => documentTree.get()),
         untrack(() => themeConfig.get()),
-        untrack(() => classRegistry.get())
+        untrack(() => classRegistry.get()),
+        untrack(() => templateRegistry.get())
       );
       batch(() => {
         isDirty.set(false);
@@ -761,6 +861,8 @@ export function createBuilderStore(initialDoc, options = {}) {
     themeConfig,
     activeThemeMode,
     classRegistry,
+    templateRegistry,
+    previewContext,
     activeClassName,
     activeBreakpoint,
     selectedNodeId,
@@ -778,6 +880,8 @@ export function createBuilderStore(initialDoc, options = {}) {
     canRedo,
     validationReport,
     fullDocumentDiagnostics,
+    templateConflicts,
+    resolvedActiveTemplate,
     contrastWarnings,
     compiledCss,
     // Actions
@@ -786,6 +890,7 @@ export function createBuilderStore(initialDoc, options = {}) {
     setBreakpoint,
     setThemeMode,
     setActiveClass,
+    setPreviewContext,
     dispatch,
     undo,
     redo,
@@ -802,6 +907,13 @@ export function createBuilderStore(initialDoc, options = {}) {
     deleteClass,
     assignClass,
     setBreakpointStyle,
+    setTemplateConditions,
+    createTemplate,
+    deleteTemplate,
+    configureQueryLoop,
+    bindDynamicField,
+    bindMediaAsset,
+    bindNavigationMenu,
     replaceSlotTree,
     exportDocument,
     saveDraft,

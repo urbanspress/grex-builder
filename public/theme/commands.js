@@ -6,6 +6,7 @@
 
 import {
   GrexSecurityError,
+  isSafeUrl,
   normalizeStyleProperty,
   normalizeTokenName,
   validateTokenValue,
@@ -13,10 +14,16 @@ import {
 import {
   cloneJson,
   extractPartsMap,
+  getNodeElementType,
   getNodeId,
   normalizeStudioNode,
   validateStudioNode,
 } from "./schema.js";
+import {
+  buildDefaultTemplateRegistry,
+  normalizeQueryLoopConfig,
+  normalizeTemplateConditions,
+} from "./templates.js";
 
 export const COMMAND_TYPES = Object.freeze([
   "insertNode",
@@ -29,6 +36,12 @@ export const COMMAND_TYPES = Object.freeze([
   "upsertClass",
   "assignClass",
   "setBreakpointStyle",
+  "setTemplateConditions",
+  "upsertTemplate",
+  "configureQueryLoop",
+  "bindDynamicField",
+  "bindMediaAsset",
+  "bindNavigationMenu",
 ]);
 
 export const VALID_BREAKPOINTS = Object.freeze(["base", "tablet", "mobile"]);
@@ -256,6 +269,9 @@ export function executeBuilderCommand(state, rawCommand, meta = {}) {
     nextThemeConfig.modes = { light: {}, dark: {} };
   }
   const nextClassRegistry = cloneJson(state?.classRegistry || {});
+  const nextTemplateRegistry = Array.isArray(state?.templateRegistry)
+    ? cloneJson(state.templateRegistry)
+    : buildDefaultTemplateRegistry(nextSlots);
 
   let inverse = null;
   let touchedSlot = null;
@@ -704,6 +720,260 @@ export function executeBuilderCommand(state, rawCommand, meta = {}) {
     } else {
       throw new GrexSecurityError(`Unsupported setBreakpointStyle target "${target}".`);
     }
+  } else if (type === "setTemplateConditions") {
+    const templateId = String(rawCommand.templateId || "").trim();
+    const tpl = nextTemplateRegistry.find((t) => t.id === templateId);
+    if (!tpl) {
+      throw new GrexSecurityError(`Template "${templateId}" not found for setTemplateConditions.`);
+    }
+    const prevConditions = cloneJson(tpl.conditions || []);
+    const prevPriority = tpl.priority;
+    tpl.conditions = normalizeTemplateConditions(rawCommand.conditions || []);
+    if (rawCommand.priority !== undefined) {
+      const pNum = Number(rawCommand.priority);
+      if (!Number.isInteger(pNum)) {
+        throw new GrexSecurityError(`Template priority must be an integer; got "${String(rawCommand.priority)}".`);
+      }
+      tpl.priority = pNum;
+    }
+    inverse = {
+      type: "setTemplateConditions",
+      templateId,
+      conditions: prevConditions,
+      priority: prevPriority,
+    };
+  } else if (type === "upsertTemplate") {
+    const action = String(rawCommand.action || "create");
+    const templateId = String(rawCommand.templateId || rawCommand.template?.id || "").trim();
+    if (!templateId || !/^[a-z0-9_-]+$/i.test(templateId)) {
+      throw new GrexSecurityError(`Invalid templateId "${templateId}".`);
+    }
+    if (action === "create") {
+      if (nextTemplateRegistry.some((t) => t.id === templateId)) {
+        throw new GrexSecurityError(`Template "${templateId}" already exists.`);
+      }
+      const spec = rawCommand.template || rawCommand;
+      const slot = String(spec.slot || "single").trim();
+      const treeSlot = String(spec.treeSlot || (slot === "header" || slot === "footer" ? `part:${slot}` : slot));
+      const newTpl = {
+        id: templateId,
+        name: String(spec.name || templateId).trim(),
+        slot,
+        priority: Number.isInteger(Number(spec.priority)) ? Number(spec.priority) : 20,
+        conditions: normalizeTemplateConditions(spec.conditions || []),
+        treeSlot,
+      };
+      if (spec.tree) {
+        const normTree = normalizeStudioNode(spec.tree, templateId);
+        validateStudioNode(normTree, extractPartsMap(nextSlots));
+        newTpl.tree = normTree;
+      }
+      nextTemplateRegistry.push(newTpl);
+      inverse = {
+        type: "upsertTemplate",
+        action: "delete",
+        templateId,
+      };
+    } else if (action === "delete") {
+      const idx = nextTemplateRegistry.findIndex((t) => t.id === templateId);
+      if (idx === -1) {
+        throw new GrexSecurityError(`Template "${templateId}" not found for delete.`);
+      }
+      const removed = cloneJson(nextTemplateRegistry[idx]);
+      nextTemplateRegistry.splice(idx, 1);
+      inverse = {
+        type: "upsertTemplate",
+        action: "create",
+        templateId,
+        template: removed,
+      };
+    } else {
+      throw new GrexSecurityError(`Unsupported upsertTemplate action "${action}".`);
+    }
+  } else if (type === "configureQueryLoop") {
+    const slot = String(rawCommand.slot || "home");
+    const nodeId = String(rawCommand.nodeId || "");
+    if (!nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${slot}".`);
+    }
+    touchedSlot = slot;
+    const loc = findNodeLocation(nextSlots[slot], nodeId);
+    if (!loc) {
+      throw new GrexSecurityError(`Node "${nodeId}" not found for configureQueryLoop.`);
+    }
+    const elType = getNodeElementType(loc.node);
+    if (!["Grid", "Stack", "Section", "ForEach"].includes(elType)) {
+      throw new GrexSecurityError(`Query Loop requires Grid, Stack, Section, or ForEach; got "${elType}".`);
+    }
+    const prevQueryLoop = loc.node.queryLoop ? cloneJson(loc.node.queryLoop) : null;
+    if (rawCommand.queryLoop === null) {
+      delete loc.node.queryLoop;
+      if (elType === "ForEach" && loc.node.props) {
+        delete loc.node.props.query;
+      }
+    } else {
+      const normalized = normalizeQueryLoopConfig(rawCommand.queryLoop || {});
+      loc.node.queryLoop = normalized;
+      if (elType === "ForEach") {
+        loc.node.props = loc.node.props || {};
+        loc.node.props.query = {
+          content_type: normalized.content_type,
+          per_page: String(normalized.per_page),
+          sort_by: normalized.order_by,
+          sort_dir: normalized.order_dir,
+          ...(normalized.filter_by_term ? { filter_by_term: normalized.filter_by_term } : {}),
+        };
+      }
+    }
+    inverse = {
+      type: "configureQueryLoop",
+      slot,
+      nodeId,
+      queryLoop: prevQueryLoop,
+    };
+  } else if (type === "bindDynamicField") {
+    const slot = String(rawCommand.slot || "home");
+    const nodeId = String(rawCommand.nodeId || "");
+    const prop = String(rawCommand.prop || "text").trim();
+    if (!["text", "label", "title", "alt", "href", "src"].includes(prop)) {
+      throw new GrexSecurityError(`Unsupported dynamic binding prop "${prop}".`);
+    }
+    if (!nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${slot}".`);
+    }
+    touchedSlot = slot;
+    const loc = findNodeLocation(nextSlots[slot], nodeId);
+    if (!loc) {
+      throw new GrexSecurityError(`Node "${nodeId}" not found for bindDynamicField.`);
+    }
+    const token = rawCommand.token;
+    if (typeof token === "string" && token !== "") {
+      if ((prop === "href" || prop === "src") && !isSafeUrl(token) && !/^\{\{\s*[a-zA-Z0-9_.-]+\s*\}\}$/.test(token.trim())) {
+        throw new GrexSecurityError(`Unsafe URL in bindDynamicField.${prop}.`);
+      }
+      if (/<script\b|<iframe\b|<object\b|<div\b|\bon[a-z]+\s*=/i.test(token)) {
+        throw new GrexSecurityError(`Unsafe markup in bindDynamicField.${prop}.`);
+      }
+    }
+    loc.node.props = loc.node.props || {};
+    const prevToken = prop in loc.node.props ? loc.node.props[prop] : null;
+    if (token === null || token === undefined || token === "") {
+      delete loc.node.props[prop];
+      if (loc.node.bindings) {
+        delete loc.node.bindings[prop];
+        if (Object.keys(loc.node.bindings).length === 0) {
+          delete loc.node.bindings;
+        }
+      }
+    } else {
+      loc.node.props[prop] = String(token);
+      if (/\{\{.*\}\}|\{[a-zA-Z0-9_]+\}/.test(String(token))) {
+        loc.node.bindings = { ...(loc.node.bindings || {}), [prop]: String(token) };
+      } else if (loc.node.bindings) {
+        delete loc.node.bindings[prop];
+        if (Object.keys(loc.node.bindings).length === 0) {
+          delete loc.node.bindings;
+        }
+      }
+    }
+    inverse = {
+      type: "bindDynamicField",
+      slot,
+      nodeId,
+      prop,
+      token: prevToken,
+    };
+  } else if (type === "bindMediaAsset") {
+    const slot = String(rawCommand.slot || "home");
+    const nodeId = String(rawCommand.nodeId || "");
+    if (!nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${slot}".`);
+    }
+    touchedSlot = slot;
+    const loc = findNodeLocation(nextSlots[slot], nodeId);
+    if (!loc) {
+      throw new GrexSecurityError(`Node "${nodeId}" not found for bindMediaAsset.`);
+    }
+    if (getNodeElementType(loc.node) !== "Image") {
+      throw new GrexSecurityError("bindMediaAsset requires an Image element.");
+    }
+    const isDecorative = Boolean(rawCommand.isDecorative);
+    const alt = rawCommand.alt == null ? "" : String(rawCommand.alt).trim();
+    const src = rawCommand.src == null ? "" : String(rawCommand.src).trim();
+    if (!src || !isSafeUrl(src)) {
+      throw new GrexSecurityError(`Unsafe or empty media URL "${src}" in bindMediaAsset.`);
+    }
+    if (!rawCommand._restore && !isDecorative && alt === "") {
+      throw new GrexSecurityError(
+        "GREX-A11Y-002: Non-decorative Image requires descriptive alt text or explicit isDecorative: true."
+      );
+    }
+    loc.node.props = loc.node.props || {};
+    const prev = loc.node.props;
+    inverse = {
+      type: "bindMediaAsset",
+      slot,
+      nodeId,
+      mediaId: prev.mediaId ?? null,
+      src: prev.src ?? "/static/grex/placeholder.png",
+      alt: prev.alt ?? "",
+      width: prev.width ?? null,
+      height: prev.height ?? null,
+      isDecorative: Boolean(prev.decorative || prev.is_decorative),
+      _restore: true,
+    };
+
+    prev.src = src;
+    prev.alt = isDecorative ? "" : alt;
+    prev.decorative = isDecorative;
+    prev.is_decorative = isDecorative;
+    if (rawCommand.mediaId !== undefined && rawCommand.mediaId !== null) {
+      prev.mediaId = rawCommand.mediaId;
+    } else {
+      delete prev.mediaId;
+    }
+    if (rawCommand.width !== undefined && rawCommand.width !== null && rawCommand.width !== "") {
+      prev.width = rawCommand.width;
+    } else {
+      delete prev.width;
+    }
+    if (rawCommand.height !== undefined && rawCommand.height !== null && rawCommand.height !== "") {
+      prev.height = rawCommand.height;
+    } else {
+      delete prev.height;
+    }
+  } else if (type === "bindNavigationMenu") {
+    const slot = String(rawCommand.slot || "home");
+    const nodeId = String(rawCommand.nodeId || "");
+    const location = String(rawCommand.location || "primary").trim().toLowerCase();
+    if (!["primary", "footer", "mobile"].includes(location)) {
+      throw new GrexSecurityError(`Invalid menu location "${location}" (expected primary, footer, or mobile).`);
+    }
+    if (!nextSlots[slot]) {
+      throw new GrexSecurityError(`Unknown template slot "${slot}".`);
+    }
+    touchedSlot = slot;
+    const loc = findNodeLocation(nextSlots[slot], nodeId);
+    if (!loc) {
+      throw new GrexSecurityError(`Node "${nodeId}" not found for bindNavigationMenu.`);
+    }
+    if (getNodeElementType(loc.node) !== "Nav") {
+      throw new GrexSecurityError("bindNavigationMenu requires a Nav element.");
+    }
+    loc.node.props = loc.node.props || {};
+    const prevLocation = loc.node.props.location ?? null;
+    const prevItems = loc.node.props.items ? cloneJson(loc.node.props.items) : null;
+    loc.node.props.location = location;
+    if (Array.isArray(rawCommand.items)) {
+      loc.node.props.items = cloneJson(rawCommand.items);
+    }
+    inverse = {
+      type: "bindNavigationMenu",
+      slot,
+      nodeId,
+      location: prevLocation || "primary",
+      items: prevItems,
+    };
   }
 
   if (touchedSlot) {
@@ -722,6 +992,7 @@ export function executeBuilderCommand(state, rawCommand, meta = {}) {
     slots: nextSlots,
     themeConfig: nextThemeConfig,
     classRegistry: nextClassRegistry,
+    templateRegistry: nextTemplateRegistry,
   };
 
   return { nextState, nextSlots, record };

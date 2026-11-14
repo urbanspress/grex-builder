@@ -328,6 +328,88 @@ def build_v020_html() -> str:
 """
 
 
+def build_v030_html() -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Grex Theme Builder v0.3.0 — Plain-English Release Guide</title>
+  <style>{CSS}</style>
+</head>
+<body>
+  <header class="cover">
+    <span class="badge">Grex Theme Builder · Release v0.3.0</span>
+    <h1>Grex Theme Builder v0.3.0</h1>
+    <p class="subtitle">Conditional Theme Builder, Visual Query Loop Builder, Dynamic/Media/Menu Pickers &amp; Live Preview Context Selector</p>
+    <p class="meta">
+      Built on GRAB v1.1.0 · GrabLab CMS v1.0.0 · Grex JS v1.0.0 · Exclusive mode: &quot;visual&quot;
+    </p>
+  </header>
+
+  <section class="callout">
+    <strong>Plain-English Overview:</strong> Grex Theme Builder v0.3.0 elevates the visual studio into a complete conditional theme and query builder. Designers can assign distinct templates by content type, taxonomy term, or slug with automatic conflict detection, loop live GrabLab CMS entries with zero wrapper <code>&lt;div&gt;</code> elements, bind dynamic fields (keeping exact decimal prices), choose accessible media and navigation menus, and switch live preview contexts directly in the toolbar.
+  </section>
+
+  <section>
+    <h2>1. What Changed in v0.3.0</h2>
+    <ul>
+      <li><strong>Conditional Theme Builder &amp; Conflict Detection (<code>GREX-TPL-CONFLICT</code>):</strong> Manage multiple named templates across <code>header</code>, <code>footer</code>, <code>home</code>, <code>single</code>, <code>archive</code>, <code>search</code>, and <code>404</code> plus reusable global parts (<code>card</code>, <code>hero</code>, <code>cta</code>, <code>sidebar</code>). Rules resolve deterministically (<code>entry_slug &gt; taxonomy_term &gt; content_type &gt; all_posts / front_page &gt; entire_site</code>), support <code>exclude</code> overrides, and block publishing whenever colliding conditions share equal priority.</li>
+      <li><strong>Visual Query Loop Builder (<code>ForEach</code> + GrabLab Query Feeds):</strong> Bind <code>Grid</code>, <code>Stack</code>, <code>Section</code>, or <code>ForEach</code> containers to GrabLab <code>query_entries</code> feeds filtered by content type, taxonomy term, custom fields, sorting, and pagination with clean <code>&lt;article&gt;</code> output and zero wrapper <code>&lt;div&gt;</code> bloat.</li>
+      <li><strong>Dynamic Data Picker (Exact <code>GrabDecimal</code> / <code>GrabInteger</code> Precision):</strong> Bind text, headings, links, buttons, and images to <code>entry.*</code>, <code>entry.custom_fields.*</code>, <code>term.*</code>, and <code>site.*</code> via XSS-safe <code>textContent</code> and URL-protocol sanitization while keeping financial decimals such as <code>&quot;19.95&quot;</code> and <code>&quot;1,000.00&quot;</code> exact.</li>
+      <li><strong>Media Library &amp; Navigation Menu Pickers:</strong> Select assets from <code>/api/media</code> inside an accessible modal <code>&lt;dialog&gt;</code> enforcing WCAG AA <code>alt</code> text or explicit decorative toggle (<code>GREX-A11Y-002</code>), and bind <code>Nav</code> elements to <code>/api/menus/&#123;location&#125;</code> with semantic <code>&lt;nav&gt;&lt;ul&gt;&lt;li&gt;&lt;a aria-current=&quot;page&quot;&gt;</code> rendering.</li>
+      <li><strong>Live Preview Context Selector (<em>Preview As</em>):</strong> Switch between Front Page, Specific Entry, Specific Term Archive, Search Results, and 404 Page in the studio toolbar to preview dynamic bindings and Query Loops live via <code>GrexPreviewBridge</code> while editing.</li>
+      <li><strong>Deterministic Undo/Redo Command Stack:</strong> All new v0.3.0 actions (<code>setTemplateConditions</code>, <code>upsertTemplate</code>, <code>configureQueryLoop</code>, <code>bindDynamicField</code>, <code>bindMediaAsset</code>, <code>bindNavigationMenu</code>) execute as reversible commands shared with Groxy AI (<code>grab mcp</code>).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. New Studio Controls &amp; API Surface</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Surface</th>
+          <th>Purpose</th>
+          <th>Safety / Accessibility Guardrail</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Toolbar: <strong>Preview As</strong></td>
+          <td>Selects active route mode, sample entry, or term archive live inside <code>GrexPreviewBridge</code></td>
+          <td>Explicit allowed-origin frame check; XSS-free DOM updates</td>
+        </tr>
+        <tr>
+          <td>Left Tab: <strong>Templates</strong></td>
+          <td>Create conditional templates, set rules/priorities, inspect resolved match</td>
+          <td><code>GREX-TPL-CONFLICT</code> collision warning blocks unsafe Publish</td>
+        </tr>
+        <tr>
+          <td>Inspector: <strong>Query Loop &amp; Pickers</strong></td>
+          <td>Configure <code>ForEach</code> loop filters, bind <code>&#123;&#123; ... &#125;&#125;</code> tokens, pick media &amp; nav menus</td>
+          <td><code>GREX-A11Y-002</code> requires <code>alt</code> or decorative flag; safe URLs only</td>
+        </tr>
+        <tr>
+          <td>Studio Server Routes</td>
+          <td>Standalone <code>/api/query</code>, <code>/api/media</code>, <code>/api/menus/&#123;location&#125;</code>, <code>/api/preview/context</code></td>
+          <td>Zero wrapper <code>&lt;div&gt;</code> validation on every saved/published doc</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Verification &amp; Quality Gates</h2>
+    <ul>
+      <li><strong>Zero Wrapper <code>&lt;div&gt;</code> Bloat:</strong> Verified across every Studio panel, <code>ForEach</code> Query Loop output, Navigation Menu markup, Media dialog, and all 11 <code>.grab.html</code> templates.</li>
+      <li><strong>GRAB v1.1.0 Static &amp; Format Checks:</strong> All <code>.grab</code> and <code>.grab.html</code> files pass <code>grab check</code> and canonical <code>grab format</code>.</li>
+      <li><strong>Automated Test Suite:</strong> 15/15 Node unit, DOM, accessibility, command stack, and preview bridge tests plus all 5 GrabLab CMS v1.0.0 integration E2E gates pass at 100%.</li>
+    </ul>
+  </section>
+</body>
+</html>
+"""
+
+
 def main():
     HTML_DIR.mkdir(parents=True, exist_ok=True)
     PDF_DIR.mkdir(parents=True, exist_ok=True)
@@ -336,6 +418,7 @@ def main():
     guides = [
         ("Grex-Builder-v0.1.0-Guide", build_v010_html()),
         ("Grex-Builder-v0.2.0-Guide", build_v020_html()),
+        ("Grex-Builder-v0.3.0-Guide", build_v030_html()),
     ]
     for stem, content in guides:
         html_path = HTML_DIR / f"{stem}.html"

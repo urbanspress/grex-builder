@@ -17,17 +17,17 @@ It packages and installs as a first-class, exclusive `mode: "visual"` theme insi
 
 ---
 
-## Quick Start (`v0.2.0`)
+## Quick Start (`v0.3.0`)
 
 ### 1. Run Standalone Visual Studio
 ```powershell
 grab migrate --db-config grab.data.json --allow-db main:migrate migrations/001_studio_schema.grab
 grab serve --allow-scripts --db-config grab.data.json --allow-db main:read-write --platform-config grab.platform.json --allow-cache studio:read-write --static public --allow-read . --allow-write public/grex src/studio.grab
 ```
-Open `http://127.0.0.1:8080/studio` to edit templates, global `--grex-*` theme tokens, reusable `.grex-c-*` classes, and responsive breakpoints, then publish compiled CSS to `public/grex/`.
+Open `http://127.0.0.1:8080/studio` to edit templates, global `--grex-*` theme tokens, reusable `.grex-c-*` classes, responsive breakpoints, conditional template rules, `ForEach` Query Loops, dynamic bindings, and live **Preview As** contexts, then publish compiled CSS to `public/grex/`.
 
 ### 2. Install in GrabLab CMS v1.0.0
-Package `theme/` (`python scripts/package_release.py --version 0.2.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (slug `grex-builder`) from `/admin/themes`.
+Package `theme/` (`python scripts/package_release.py --version 0.3.0`) or copy `theme/` to `themes/grex-builder/` and `theme/assets/theme.css` to `public/themes/grex-builder/theme.css`, then activate **Grex Theme Builder** (slug `grex-builder`) from `/admin/themes`.
 
 ### 3. Run Verification Suite
 ```powershell
@@ -39,7 +39,7 @@ python tests/integration_e2e.py
 
 ## Current Status
 - **Repositories:** `urbanspress/grex-builder.progress` (active development) / `urbanspress/grex-builder.stable` (verified releases)
-- **Latest Release:** `v0.2.0` — Global Theme Token Studio (`createTheme`), Bricks-Style Reusable Class Manager (`createClassManager`), Responsive Breakpoints, & Structured Visual Inspector (**Complete**; see [Grex-Builder-v0.2.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.2.0-Guide.pdf)).
+- **Latest Release:** `v0.3.0` — Conditional Theme Builder, Visual Query Loop Builder (`ForEach`), Dynamic Data/Media/Menu Pickers & Live Preview Context Selector (**Complete**; see [Grex-Builder-v0.3.0-Guide.pdf](docs/releases/pdf/Grex-Builder-v0.3.0-Guide.pdf)).
 - **Governance & Roadmap:** See [GREX-BUILDER-EXPERT.md](GREX-BUILDER-EXPERT.md), [AGENTS.md](AGENTS.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---

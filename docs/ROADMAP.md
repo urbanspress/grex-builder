@@ -21,8 +21,8 @@
 
 ---
 
-## `v0.3` — Conditional Theme Builder, Query Loop Builder & Dynamic Data Picker
-**Status:** Approved target; specification in review ([`specifications/GREX-BUILDER-SPEC-003.md`](../specifications/GREX-BUILDER-SPEC-003.md))
+## `v0.3` — Conditional Theme Builder, Query Loop Builder & Dynamic Data Picker (Complete — `v0.3.0`)
+**Status:** Complete & verified (`v0.3.0`; [`specifications/GREX-BUILDER-SPEC-003.md`](../specifications/GREX-BUILDER-SPEC-003.md))
 
 - **Conditional Global Parts & Templates:** Visual design for `header`, `footer`, `home`, `single`, `archive`, `search`, and `404` templates plus reusable global parts (`card`, `hero`, `cta`) with deterministic display rules (*Entire Site*, *Front Page*, *All Posts*, *Specific Content Type*, *Specific Taxonomy/Term*, *Specific Entry Slug*, *404 Page*, *Search Results*) and conflict detection.
 - **Visual Query Loop Builder:** Point-and-click configuration of GrabLab `query_entries` / `GET /api/query` loops (`content_type`, `filter_by_term`, custom fields, sorting, pagination) bound to `Grid`, `Stack`, or `Section` containers with `Grex JS v1.0.0` `ForEach` rendering and zero wrapper-`<div>` bloat.

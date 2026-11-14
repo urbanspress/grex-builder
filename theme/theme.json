@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "slug": "grex-builder",
   "name": "Grex Theme Builder",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "mode": "visual",
   "engine": "grex-visual",
   "author": "Urbanspress",

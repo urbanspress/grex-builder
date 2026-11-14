@@ -140,7 +140,10 @@ export function getNodeTag(node) {
 }
 
 function isBindingToken(val) {
-  return typeof val === "string" && /^\{[a-zA-Z0-9_]+\}$/.test(val.trim());
+  return (
+    typeof val === "string" &&
+    (/^\{[a-zA-Z0-9_]+\}$/.test(val.trim()) || /^\{\{\s*[a-zA-Z0-9_.-]+\s*\}\}$/.test(val.trim()))
+  );
 }
 
 /**
@@ -276,11 +279,21 @@ export function toGrexJsNode(node, partsMap = {}, depth = 0) {
   const props = {};
 
   for (const [k, v] of Object.entries(rawProps)) {
-    if (k === "id" || k === "class" || k === "aria-label") {
+    if (k === "id" || k === "class" || k === "aria-label" || k === "mediaId") {
       continue;
     }
     if (k === "is_decorative") {
       props.decorative = Boolean(v);
+      if (v) {
+        attrs["aria-hidden"] = "true";
+      }
+      continue;
+    }
+    if (k === "decorative") {
+      props.decorative = Boolean(v);
+      if (v) {
+        attrs["aria-hidden"] = "true";
+      }
       continue;
     }
     if (mappedType === "Nav" && k === "location") {
@@ -401,6 +414,12 @@ export function normalizeStudioNode(node, fallbackPrefix = "el") {
   if (node.styles && typeof node.styles === "object" && Object.keys(node.styles).length > 0) {
     out.styles = cloneJson(node.styles);
   }
+  if (node.queryLoop && typeof node.queryLoop === "object") {
+    out.queryLoop = cloneJson(node.queryLoop);
+  }
+  if (node.bindings && typeof node.bindings === "object" && Object.keys(node.bindings).length > 0) {
+    out.bindings = cloneJson(node.bindings);
+  }
   if (Array.isArray(node.children)) {
     out.children = node.children.map((child, idx) =>
       normalizeStudioNode(child, `${elType.toLowerCase()}-${idx}`)
@@ -482,6 +501,12 @@ function stripForGrabLabExport(node) {
   if (node.styles && typeof node.styles === "object" && Object.keys(node.styles).length > 0) {
     out.styles = cloneJson(node.styles);
   }
+  if (node.queryLoop && typeof node.queryLoop === "object") {
+    out.queryLoop = cloneJson(node.queryLoop);
+  }
+  if (node.bindings && typeof node.bindings === "object" && Object.keys(node.bindings).length > 0) {
+    out.bindings = cloneJson(node.bindings);
+  }
   if (Array.isArray(node.children) && node.children.length > 0) {
     out.children = node.children.map(stripForGrabLabExport);
   }
@@ -518,6 +543,9 @@ export function exportGrabLabDocument(slots, extra = {}) {
   }
   if (extra && extra.classes && typeof extra.classes === "object" && Object.keys(extra.classes).length > 0) {
     doc.classes = cloneJson(extra.classes);
+  }
+  if (extra && Array.isArray(extra.templateRegistry) && extra.templateRegistry.length > 0) {
+    doc.templateRegistry = cloneJson(extra.templateRegistry);
   }
   return doc;
 }
@@ -593,11 +621,37 @@ export function evaluateSlotDiagnostics(rootNode, partsMap = {}) {
 
   let a11yResult = { ok: false, issues: [] };
   if (valid) {
+    const checkImagesAlt = (n) => {
+      if (!n || typeof n !== "object") {
+        return;
+      }
+      if (getNodeElementType(n) === "Image") {
+        const p = n.props || {};
+        const isDec = Boolean(p.decorative || p.is_decorative);
+        const alt = typeof p.alt === "string" ? p.alt.trim() : "";
+        if (!isDec && alt === "") {
+          errors.push({
+            code: "GREX-A11Y-002",
+            nodeId: getNodeId(n) || undefined,
+            message: "Non-decorative Image requires descriptive alt text or explicit decorative flag.",
+          });
+        }
+      }
+      if (Array.isArray(n.children)) {
+        for (const ch of n.children) {
+          checkImagesAlt(ch);
+        }
+      }
+    };
+    checkImagesAlt(rootNode);
+
     const grexTree = toGrexJsNode(rootNode, partsMap, 0);
     a11yResult = auditAccessibility(grexTree, { defaultBg: "#ffffff" });
     for (const issue of a11yResult.issues) {
       if (issue.severity === "error") {
-        errors.push({ code: issue.code, nodeId: issue.nodeId, message: issue.message });
+        if (!errors.some((e) => e.code === "GREX-A11Y-002" && e.nodeId === issue.nodeId && issue.code === "GREX-A11Y-002")) {
+          errors.push({ code: issue.code, nodeId: issue.nodeId, message: issue.message });
+        }
       } else {
         warnings.push({ code: issue.code, nodeId: issue.nodeId, message: issue.message });
       }

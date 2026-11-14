@@ -1,5 +1,5 @@
 /**
- * Grex Theme Builder — Split-Screen Studio UI (v0.1).
+ * Grex Theme Builder — Split-Screen Studio UI (v0.3).
  * 100% Grex JS v1.0.0 runtime: zero Vue, Pinia, React, Webpack, or Vite,
  * and zero wrapper <div> elements across all studio panels.
  */
@@ -22,6 +22,12 @@ import {
   getNodeId,
   getNodeTag,
 } from "./schema.js";
+import {
+  CONDITION_TYPES,
+  DEFAULT_PREVIEW_CONTEXT,
+  TEMPLATE_SLOTS,
+  GLOBAL_PART_SLOTS,
+} from "./templates.js";
 import { findNodeLocation } from "./commands.js";
 import { createStudioPreviewClient } from "./preview-bridge.js";
 
@@ -184,12 +190,44 @@ export function createStudioHttpTransport(opts = {}) {
     return { ok: true, status: resp.status, data };
   }
 
+  async function getJson(path) {
+    const resp = await fetch(`${baseUrl}${path}`, {
+      method: "GET",
+      headers: {
+        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+      },
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, error: data.error || `HTTP ${resp.status}`, data };
+    }
+    return { ok: true, status: resp.status, data };
+  }
+
   return {
     saveDraft(payload) {
       return postJson("/api/studio/draft", payload);
     },
     publish(payload) {
       return postJson("/api/studio/publish", payload);
+    },
+    listMedia() {
+      return getJson("/api/media");
+    },
+    getMenu(location) {
+      return getJson(`/api/menus/${encodeURIComponent(location || "primary")}`);
+    },
+    queryEntries(params = {}) {
+      const qs = new URLSearchParams();
+      if (params.content_type) qs.set("content_type", params.content_type);
+      if (params.term) qs.set("term", params.term);
+      if (params.page) qs.set("page", String(params.page));
+      if (params.per_page) qs.set("per_page", String(params.per_page));
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return getJson(`/api/query${suffix}`);
+    },
+    getPreviewContext() {
+      return getJson("/api/preview/context");
     },
   };
 }
@@ -341,6 +379,95 @@ export function mountBuilderStudio(options) {
     store.setThemeMode(next);
   });
 
+  const previewCtxBar = doc.createElement("section");
+  previewCtxBar.id = "grex-preview-context-bar";
+  previewCtxBar.className = "grex-preview-context-bar";
+  previewCtxBar.setAttribute("aria-label", "Live Preview Context Selector");
+
+  const previewModeSelect = doc.createElement("select");
+  previewModeSelect.id = "grex-preview-mode-select";
+  previewModeSelect.setAttribute("aria-label", "Preview As Context");
+  for (const [mVal, mLabel] of [
+    ["front_page", "Preview As: Front Page"],
+    ["single", "Preview As: Specific Entry"],
+    ["archive", "Preview As: Specific Term Archive"],
+    ["search", "Preview As: Search Results"],
+    ["404", "Preview As: 404 Page"],
+  ]) {
+    const opt = doc.createElement("option");
+    opt.value = mVal;
+    opt.textContent = mLabel;
+    previewModeSelect.appendChild(opt);
+  }
+
+  const previewEntrySelect = doc.createElement("select");
+  previewEntrySelect.id = "grex-preview-entry-select";
+  previewEntrySelect.setAttribute("aria-label", "Preview Target Entry");
+
+  const previewTermSelect = doc.createElement("select");
+  previewTermSelect.id = "grex-preview-term-select";
+  previewTermSelect.setAttribute("aria-label", "Preview Target Term");
+  for (const [tSlug, tName] of [
+    ["guides", "Category: Guides & Tutorials"],
+    ["news", "Category: News"],
+    ["design", "Category: Design"],
+    ["docs", "Topic: Docs"],
+  ]) {
+    const opt = doc.createElement("option");
+    opt.value = tSlug;
+    opt.textContent = tName;
+    previewTermSelect.appendChild(opt);
+  }
+
+  previewModeSelect.addEventListener("change", (ev) => {
+    const mode = ev.target.value;
+    const ctxNow = store.previewContext.peek() || DEFAULT_PREVIEW_CONTEXT;
+    const entries = Array.isArray(ctxNow.entries) ? ctxNow.entries : DEFAULT_PREVIEW_CONTEXT.entries;
+    const chosenEntry = entries.find((e) => e.slug === previewEntrySelect.value) || ctxNow.entry || entries[0];
+    const pathMap = {
+      front_page: "/",
+      single: chosenEntry ? chosenEntry.full_path || `/posts/${chosenEntry.slug}` : "/posts/sample",
+      archive: `/category/${previewTermSelect.value || "guides"}`,
+      search: "/search?q=grex",
+      404: "/not-found-preview",
+    };
+    store.setPreviewContext({
+      mode,
+      path: pathMap[mode] || "/",
+      entry: chosenEntry || ctxNow.entry,
+    });
+  });
+
+  previewEntrySelect.addEventListener("change", (ev) => {
+    const slug = ev.target.value;
+    const ctxNow = store.previewContext.peek() || DEFAULT_PREVIEW_CONTEXT;
+    const entries = Array.isArray(ctxNow.entries) ? ctxNow.entries : DEFAULT_PREVIEW_CONTEXT.entries;
+    const matched = entries.find((e) => e.slug === slug);
+    if (matched) {
+      store.setPreviewContext({
+        mode: "single",
+        path: matched.full_path || `/posts/${matched.slug}`,
+        entry: matched,
+      });
+    }
+  });
+
+  previewTermSelect.addEventListener("change", (ev) => {
+    const slug = ev.target.value;
+    const selectedOpt = ev.target.selectedOptions?.[0];
+    const name = selectedOpt ? selectedOpt.textContent.replace(/^[^:]+:\s*/, "") : slug;
+    store.setPreviewContext({
+      mode: "archive",
+      path: `/category/${slug}`,
+      term: { taxonomy: "category", slug, name },
+    });
+  });
+
+  previewCtxBar.appendChild(previewModeSelect);
+  previewCtxBar.appendChild(previewEntrySelect);
+  previewCtxBar.appendChild(previewTermSelect);
+
+  actionsGroup.element.appendChild(previewCtxBar);
   actionsGroup.element.appendChild(bpNav);
   actionsGroup.element.appendChild(themeModeBtn);
   actionsGroup.element.appendChild(undoBtn.element);
@@ -430,6 +557,11 @@ export function mountBuilderStudio(options) {
   themeTokensSection.className = "grex-theme-tokens-panel";
   themeTokensSection.setAttribute("aria-label", "Global Theme Tokens");
 
+  const templatesSection = doc.createElement("section");
+  templatesSection.id = "grex-templates-panel";
+  templatesSection.className = "grex-templates-panel";
+  templatesSection.setAttribute("aria-label", "Conditional Templates");
+
   let activeTokenEditMode = "light";
 
   const leftTabsNav = doc.createElement("nav");
@@ -437,34 +569,49 @@ export function mountBuilderStudio(options) {
   leftTabsNav.setAttribute("aria-label", "Studio Left Panels");
   const tabElementsBtn = doc.createElement("button");
   tabElementsBtn.type = "button";
+  tabElementsBtn.id = "grex-tab-elements";
   tabElementsBtn.className = "grex-tab-btn is-active";
   setSafeText(tabElementsBtn, "Elements & Tree");
   const tabTokensBtn = doc.createElement("button");
   tabTokensBtn.type = "button";
+  tabTokensBtn.id = "grex-tab-tokens";
   tabTokensBtn.className = "grex-tab-btn";
   setSafeText(tabTokensBtn, "Theme Tokens");
+  const tabTemplatesBtn = doc.createElement("button");
+  tabTemplatesBtn.type = "button";
+  tabTemplatesBtn.id = "grex-tab-templates";
+  tabTemplatesBtn.className = "grex-tab-btn";
+  setSafeText(tabTemplatesBtn, "Templates");
 
   const showLeftTab = (which) => {
+    const isElements = which === "elements";
     const isTokens = which === "tokens";
-    paletteContainer.element.hidden = isTokens;
-    structureNav.hidden = isTokens;
+    const isTemplates = which === "templates";
+    paletteContainer.element.hidden = !isElements;
+    structureNav.hidden = !isElements;
     themeTokensSection.hidden = !isTokens;
-    tabElementsBtn.className = isTokens ? "grex-tab-btn" : "grex-tab-btn is-active";
+    templatesSection.hidden = !isTemplates;
+    tabElementsBtn.className = isElements ? "grex-tab-btn is-active" : "grex-tab-btn";
     tabTokensBtn.className = isTokens ? "grex-tab-btn is-active" : "grex-tab-btn";
+    tabTemplatesBtn.className = isTemplates ? "grex-tab-btn is-active" : "grex-tab-btn";
   };
   themeTokensSection.hidden = true;
+  templatesSection.hidden = true;
   tabElementsBtn.addEventListener("click", () => showLeftTab("elements"));
   tabTokensBtn.addEventListener("click", () => showLeftTab("tokens"));
+  tabTemplatesBtn.addEventListener("click", () => showLeftTab("templates"));
   leftTabsNav.appendChild(tabElementsBtn);
   leftTabsNav.appendChild(tabTokensBtn);
+  leftTabsNav.appendChild(tabTemplatesBtn);
 
   const leftAside = doc.createElement("aside");
   leftAside.className = "grex-studio-left";
-  leftAside.setAttribute("aria-label", "Palette, Structure and Theme Tokens");
+  leftAside.setAttribute("aria-label", "Palette, Structure, Tokens and Templates");
   leftAside.appendChild(leftTabsNav);
   leftAside.appendChild(paletteContainer.element);
   leftAside.appendChild(structureNav);
   leftAside.appendChild(themeTokensSection);
+  leftAside.appendChild(templatesSection);
 
   // --- Center Split-Screen Live Preview Pane ---
   const previewSection = doc.createElement("main");
@@ -504,6 +651,9 @@ export function mountBuilderStudio(options) {
       if (ev.data && ev.data.type === "preview-ready") {
         previewClient.syncTree(store.activeSlot.peek(), store.documentTree.peek());
         previewClient.syncSelected(store.selectedNodeId.peek());
+        if (store.previewContext) {
+          previewClient.syncContext(store.previewContext.peek());
+        }
         const css = store.compiledCss.peek();
         previewClient.syncStyles({
           tokensCss: css.tokensCss,
@@ -680,16 +830,228 @@ export function mountBuilderStudio(options) {
 
       const diag = store.validationReport.get();
       const contrastWarns = store.contrastWarnings.get();
+      const tplConflicts = store.templateConflicts ? store.templateConflicts.get() : [];
       const totalWarns = diag.warnings.length + contrastWarns.length;
+      const totalErrs = diag.errors.length + tplConflicts.length;
       setSafeText(
         a11yBadge.element,
-        diag.ok
+        totalErrs === 0
           ? `WCAG AA: Pass (${totalWarns} warnings)`
-          : `WCAG AA: ${diag.errors.length} error(s)`
+          : `WCAG AA: ${totalErrs} error(s)`
       );
-      a11yBadge.element.className = diag.ok
-        ? "grex-studio-a11y-badge is-pass"
-        : "grex-studio-a11y-badge is-fail";
+      a11yBadge.element.className =
+        totalErrs === 0 ? "grex-studio-a11y-badge is-pass" : "grex-studio-a11y-badge is-fail";
+    })
+  );
+
+  disposers.push(
+    effect(() => {
+      if (!store.previewContext) {
+        return;
+      }
+      const ctx = store.previewContext.get() || DEFAULT_PREVIEW_CONTEXT;
+      const mode = ctx.mode || "front_page";
+      previewModeSelect.value = mode;
+      const entries = Array.isArray(ctx.entries) ? ctx.entries : DEFAULT_PREVIEW_CONTEXT.entries;
+      clearChildren(previewEntrySelect);
+      for (const e of entries) {
+        const opt = doc.createElement("option");
+        opt.value = e.slug;
+        opt.textContent = `${e.title} (${e.content_type})`;
+        previewEntrySelect.appendChild(opt);
+      }
+      if (ctx.entry?.slug) {
+        previewEntrySelect.value = ctx.entry.slug;
+      }
+      previewEntrySelect.hidden = mode !== "single";
+      previewTermSelect.hidden = mode !== "archive";
+      if (ctx.term?.slug) {
+        previewTermSelect.value = ctx.term.slug;
+      }
+    })
+  );
+
+  disposers.push(
+    effect(() => {
+      if (!store.templateRegistry) {
+        return;
+      }
+      const reg = store.templateRegistry.get() || {};
+      const conflicts = store.templateConflicts ? store.templateConflicts.get() : [];
+      const resolved = store.resolvedActiveTemplate ? store.resolvedActiveTemplate.get() : null;
+      const activeSlotName = store.activeSlot.get();
+      clearChildren(templatesSection);
+
+      const tplHeading = Heading({ props: { level: 2, text: "Conditional Templates" } }, { document: doc });
+      templatesSection.appendChild(tplHeading.element);
+
+      const resolvedBanner = Text(
+        {
+          props: {
+            text: resolved
+              ? `Resolved (${activeSlotName}): ${resolved.name || resolved.id} [priority ${resolved.priority ?? 10}]`
+              : `No template matched context for slot "${activeSlotName}"`,
+          },
+        },
+        { document: doc }
+      );
+      resolvedBanner.element.className = "grex-resolved-tpl-banner";
+      templatesSection.appendChild(resolvedBanner.element);
+
+      if (conflicts.length > 0) {
+        const confList = doc.createElement("ul");
+        confList.className = "grex-diag-list";
+        for (const c of conflicts) {
+          const li = doc.createElement("li");
+          li.className = "is-error";
+          setSafeText(li, `[${c.code}] ${c.message}`);
+          confList.appendChild(li);
+        }
+        templatesSection.appendChild(confList);
+      }
+
+      const newForm = doc.createElement("section");
+      newForm.className = "grex-template-create";
+      const newNameInput = doc.createElement("input");
+      newNameInput.type = "text";
+      newNameInput.placeholder = "New template name";
+      newNameInput.setAttribute("aria-label", "New Template Name");
+      const newSlotSelect = doc.createElement("select");
+      newSlotSelect.setAttribute("aria-label", "New Template Slot");
+      for (const s of [...TEMPLATE_SLOTS, ...GLOBAL_PART_SLOTS.map((p) => `part:${p}`)]) {
+        const opt = doc.createElement("option");
+        opt.value = s;
+        opt.textContent = s;
+        newSlotSelect.appendChild(opt);
+      }
+      const newCondSelect = doc.createElement("select");
+      newCondSelect.setAttribute("aria-label", "New Template Condition");
+      for (const ct of CONDITION_TYPES) {
+        const opt = doc.createElement("option");
+        opt.value = ct;
+        opt.textContent = ct;
+        newCondSelect.appendChild(opt);
+      }
+      const createTplBtn = doc.createElement("button");
+      createTplBtn.type = "button";
+      createTplBtn.id = "grex-create-template-btn";
+      setSafeText(createTplBtn, "Create Template");
+      const formatCondValue = (condType, rawVal) => {
+        const trimmed = String(rawVal || "").trim();
+        if (condType === "taxonomy_term") {
+          return { taxonomy: "category", term: trimmed || "guides" };
+        }
+        if (condType === "content_type") {
+          return trimmed || "post";
+        }
+        if (condType === "entry_slug") {
+          return trimmed || "getting-started-with-grex";
+        }
+        return null;
+      };
+
+      createTplBtn.addEventListener("click", () => {
+        const label = newNameInput.value.trim();
+        if (!label) {
+          return;
+        }
+        const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const slotVal = newSlotSelect.value;
+        const cleanSlot = slotVal.startsWith("part:") ? slotVal.slice(5) : slotVal;
+        const condType = newCondSelect.value;
+        store.createTemplate({
+          id: `${cleanSlot}-${slug || Date.now()}`,
+          name: label,
+          slot: cleanSlot,
+          priority: 10,
+          conditions: [{ type: condType, value: formatCondValue(condType, ""), operator: "include" }],
+        });
+      });
+      newForm.appendChild(newNameInput);
+      newForm.appendChild(newSlotSelect);
+      newForm.appendChild(newCondSelect);
+      newForm.appendChild(createTplBtn);
+      templatesSection.appendChild(newForm);
+
+      for (const tpl of Object.values(reg)) {
+        const card = doc.createElement("section");
+        card.className =
+          resolved && resolved.id === tpl.id ? "grex-template-card is-active" : "grex-template-card";
+        card.setAttribute("data-template-id", tpl.id);
+
+        const cardTitle = Heading(
+          { props: { level: 3, text: `${tpl.name || tpl.id} (${tpl.slot})` } },
+          { document: doc }
+        );
+        card.appendChild(cardTitle.element);
+
+        const prioInput = doc.createElement("input");
+        prioInput.type = "number";
+        prioInput.value = String(tpl.priority ?? 10);
+        prioInput.addEventListener("change", (ev) => {
+          const prio = Number(ev.target.value);
+          store.setTemplateConditions(tpl.id, tpl.conditions || [], Number.isFinite(prio) ? prio : 10);
+        });
+        appendLabeledField(card, `tpl-prio-${tpl.id}`, "Priority", prioInput);
+
+        const firstCond = (tpl.conditions && tpl.conditions[0]) || {
+          type: "entire_site",
+          value: "",
+          operator: "include",
+        };
+        const condTypeSel = doc.createElement("select");
+        for (const ct of CONDITION_TYPES) {
+          const opt = doc.createElement("option");
+          opt.value = ct;
+          opt.textContent = ct;
+          condTypeSel.appendChild(opt);
+        }
+        condTypeSel.value = firstCond.type || "entire_site";
+
+        const condValInput = doc.createElement("input");
+        condValInput.type = "text";
+        condValInput.placeholder = "slug / type / term";
+        condValInput.value =
+          firstCond.value && typeof firstCond.value === "object"
+            ? firstCond.value.term || firstCond.value.slug || ""
+            : (firstCond.value ?? "");
+
+        const condOpSel = doc.createElement("select");
+        for (const op of ["include", "exclude"]) {
+          const opt = doc.createElement("option");
+          opt.value = op;
+          opt.textContent = op;
+          condOpSel.appendChild(opt);
+        }
+        condOpSel.value = firstCond.operator || "include";
+
+        const applyCond = () => {
+          const rest = Array.isArray(tpl.conditions) ? tpl.conditions.slice(1) : [];
+          const nextFirst = {
+            type: condTypeSel.value,
+            value: formatCondValue(condTypeSel.value, condValInput.value),
+            operator: condOpSel.value,
+          };
+          store.setTemplateConditions(tpl.id, [nextFirst, ...rest], tpl.priority ?? 10);
+        };
+        condTypeSel.addEventListener("change", applyCond);
+        condValInput.addEventListener("change", applyCond);
+        condOpSel.addEventListener("change", applyCond);
+
+        appendLabeledField(card, `tpl-cond-type-${tpl.id}`, "Condition Rule", condTypeSel);
+        appendLabeledField(card, `tpl-cond-val-${tpl.id}`, "Condition Target Value", condValInput);
+        appendLabeledField(card, `tpl-cond-op-${tpl.id}`, "Rule Operator", condOpSel);
+
+        if (!tpl.id.endsWith("-default")) {
+          const delBtn = doc.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "is-danger";
+          setSafeText(delBtn, "Delete Template");
+          delBtn.addEventListener("click", () => store.deleteTemplate(tpl.id));
+          card.appendChild(delBtn);
+        }
+        templatesSection.appendChild(card);
+      }
     })
   );
 
@@ -785,6 +1147,115 @@ export function mountBuilderStudio(options) {
       }
     })
   );
+
+  const mediaDialog = doc.createElement("dialog");
+  mediaDialog.id = "grex-media-dialog";
+  mediaDialog.className = "grex-media-dialog";
+  mediaDialog.setAttribute("aria-label", "Media Library Picker");
+  root.appendChild(mediaDialog);
+
+  function closeMediaDialog() {
+    if (typeof mediaDialog.close === "function") {
+      mediaDialog.close();
+    } else {
+      mediaDialog.open = false;
+    }
+  }
+
+  async function openMediaLibraryPicker(nodeId, currentProps = {}) {
+    clearChildren(mediaDialog);
+    const dlgTitle = Heading({ props: { level: 3, text: "Media Library Picker" } }, { document: doc });
+    mediaDialog.appendChild(dlgTitle.element);
+
+    let items = [];
+    if (transport && typeof transport.listMedia === "function") {
+      const res = await transport.listMedia();
+      if (res && res.ok && res.data && Array.isArray(res.data.media)) {
+        items = res.data.media;
+      }
+    }
+    if (items.length === 0) {
+      const ctxNow = store.previewContext ? store.previewContext.peek() : null;
+      items = (ctxNow && Array.isArray(ctxNow.media) && ctxNow.media) || [
+        {
+          id: "media-hero-01",
+          url: "/static/theme/preview-hero.svg",
+          alt: "Grex Theme Builder modular canvas overview",
+          width: 1200,
+          height: 630,
+          decorative: false,
+        },
+        {
+          id: "media-card-02",
+          url: "/static/theme/preview-card.svg",
+          alt: "Responsive component tokens showcase",
+          width: 800,
+          height: 500,
+          decorative: false,
+        },
+      ];
+    }
+
+    const altInput = doc.createElement("input");
+    altInput.type = "text";
+    altInput.value = currentProps.alt ?? "";
+    altInput.placeholder = "Describe image for screen readers (WCAG AA)";
+    appendLabeledField(mediaDialog, "grex-media-alt-input", "Alt Text (Required unless decorative)", altInput);
+
+    const decoLabel = doc.createElement("label");
+    decoLabel.className = "grex-field-inline";
+    const decoCheck = doc.createElement("input");
+    decoCheck.type = "checkbox";
+    decoCheck.id = "grex-media-deco-check";
+    decoCheck.checked = Boolean(currentProps.isDecorative || currentProps.decorative);
+    const decoSpan = doc.createElement("span");
+    setSafeText(decoSpan, "Mark as decorative (alt=\"\", aria-hidden=\"true\")");
+    decoLabel.appendChild(decoCheck);
+    decoLabel.appendChild(decoSpan);
+    mediaDialog.appendChild(decoLabel);
+
+    const listEl = doc.createElement("ul");
+    listEl.className = "grex-media-grid";
+    for (const asset of items) {
+      const li = doc.createElement("li");
+      const pickBtn = doc.createElement("button");
+      pickBtn.type = "button";
+      pickBtn.className = "grex-media-item";
+      pickBtn.setAttribute("data-media-id", String(asset.id || asset.url));
+      setSafeText(
+        pickBtn,
+        `${asset.id || "asset"} — ${asset.alt || "(decorative)"} (${asset.width || 0}x${asset.height || 0})`
+      );
+      pickBtn.addEventListener("click", () => {
+        const isDeco = decoCheck.checked || Boolean(asset.decorative && !altInput.value.trim());
+        const resolvedAlt = isDeco ? "" : altInput.value.trim() || asset.alt || "";
+        store.bindMediaAsset(nodeId, {
+          mediaId: asset.id,
+          src: asset.url || asset.src,
+          alt: resolvedAlt,
+          width: asset.width,
+          height: asset.height,
+          isDecorative: isDeco,
+        });
+        closeMediaDialog();
+      });
+      li.appendChild(pickBtn);
+      listEl.appendChild(li);
+    }
+    mediaDialog.appendChild(listEl);
+
+    const closeBtn = doc.createElement("button");
+    closeBtn.type = "button";
+    setSafeText(closeBtn, "Close");
+    closeBtn.addEventListener("click", closeMediaDialog);
+    mediaDialog.appendChild(closeBtn);
+
+    if (typeof mediaDialog.showModal === "function") {
+      mediaDialog.showModal();
+    } else {
+      mediaDialog.open = true;
+    }
+  }
 
   disposers.push(
     effect(() => {
@@ -1000,6 +1471,88 @@ export function mountBuilderStudio(options) {
             previewClient.patchAttr(nid, "alt", ev.target.value);
           });
           appendLabeledField(inspectorAside, `prop-alt-${nid}`, "Alt Text (WCAG AA)", altInput);
+
+          const decoField = doc.createElement("label");
+          decoField.className = "grex-field-inline";
+          const decoToggle = doc.createElement("input");
+          decoToggle.type = "checkbox";
+          decoToggle.id = `prop-deco-${nid}`;
+          decoToggle.checked = Boolean(props.is_decorative || props.decorative || node.decorative);
+          decoToggle.addEventListener("change", (ev) => {
+            const isDeco = Boolean(ev.target.checked);
+            store.bindMediaAsset(nid, {
+              mediaId: props.mediaId || node.mediaId || null,
+              src: props.src || "",
+              alt: isDeco ? "" : props.alt || "",
+              width: props.width,
+              height: props.height,
+              isDecorative: isDeco,
+            });
+          });
+          const decoTxt = doc.createElement("span");
+          setSafeText(decoTxt, "Decorative Image (aria-hidden)");
+          decoField.appendChild(decoToggle);
+          decoField.appendChild(decoTxt);
+          inspectorAside.appendChild(decoField);
+
+          const browseMediaBtn = doc.createElement("button");
+          browseMediaBtn.type = "button";
+          browseMediaBtn.id = "studio-media-picker-btn";
+          setSafeText(browseMediaBtn, "Browse Media Library");
+          browseMediaBtn.addEventListener("click", () => {
+            void openMediaLibraryPicker(nid, {
+              alt: props.alt,
+              isDecorative: Boolean(props.is_decorative || props.decorative),
+            });
+          });
+          inspectorAside.appendChild(browseMediaBtn);
+        }
+
+        if (elType === "Nav") {
+          const navSection = doc.createElement("section");
+          navSection.id = "grex-nav-menu-picker";
+          navSection.className = "grex-inspector-subpanel";
+          navSection.setAttribute("aria-label", "Navigation Menu Picker");
+          const navHeading = Heading({ props: { level: 3, text: "Navigation Menu (/api/menus)" } }, { document: doc });
+          navSection.appendChild(navHeading.element);
+
+          const locSelect = doc.createElement("select");
+          for (const loc of ["primary", "footer", "mobile"]) {
+            const opt = doc.createElement("option");
+            opt.value = loc;
+            opt.textContent = `${loc} menu`;
+            locSelect.appendChild(opt);
+          }
+          locSelect.value = props.location || "primary";
+          appendLabeledField(navSection, `prop-nav-loc-${nid}`, "Menu Location", locSelect);
+
+          const bindMenuForLoc = async (loc) => {
+            let items = null;
+            if (transport && typeof transport.getMenu === "function") {
+              const res = await transport.getMenu(loc);
+              if (res && res.ok && res.data && Array.isArray(res.data.menu)) {
+                items = res.data.menu;
+              }
+            }
+            if (!items) {
+              const ctxMenus = store.previewContext?.peek()?.menus || DEFAULT_PREVIEW_CONTEXT.menus;
+              items = ctxMenus[loc] || DEFAULT_PREVIEW_CONTEXT.menus.primary;
+            }
+            store.bindNavigationMenu(nid, loc, items);
+          };
+
+          locSelect.addEventListener("change", (ev) => {
+            void bindMenuForLoc(ev.target.value);
+          });
+          const loadMenuBtn = doc.createElement("button");
+          loadMenuBtn.type = "button";
+          loadMenuBtn.id = "studio-bind-menu-btn";
+          setSafeText(loadMenuBtn, "Load & Bind Menu");
+          loadMenuBtn.addEventListener("click", () => {
+            void bindMenuForLoc(locSelect.value);
+          });
+          navSection.appendChild(loadMenuBtn);
+          inspectorAside.appendChild(navSection);
         }
 
         if (elType === "Input" || elType === "Select") {
@@ -1010,6 +1563,167 @@ export function mountBuilderStudio(options) {
             store.updateNodeProps(nid, { label: ev.target.value });
           });
           appendLabeledField(inspectorAside, `prop-label-${nid}`, "Accessible Label", lblInput);
+        }
+
+        if (["Heading", "Text", "RichText", "Link", "Button", "Image"].includes(elType)) {
+          const dynSection = doc.createElement("section");
+          dynSection.id = "grex-dynamic-picker";
+          dynSection.className = "grex-inspector-subpanel";
+          dynSection.setAttribute("aria-label", "Dynamic Data Bindings");
+          const dynHeading = Heading({ props: { level: 3, text: "Dynamic Data Picker" } }, { document: doc });
+          dynSection.appendChild(dynHeading.element);
+
+          const bindableProps =
+            elType === "Image"
+              ? ["src", "alt"]
+              : elType === "Link"
+                ? ["text", "href"]
+                : ["text"];
+          const propSelect = doc.createElement("select");
+          for (const bpName of bindableProps) {
+            const opt = doc.createElement("option");
+            opt.value = bpName;
+            opt.textContent = bpName;
+            propSelect.appendChild(opt);
+          }
+          appendLabeledField(dynSection, `dyn-prop-${nid}`, "Target Property", propSelect);
+
+          const tokenSelect = doc.createElement("select");
+          for (const [tokVal, tokLabel] of [
+            ["entry.title", "entry.title"],
+            ["entry.slug", "entry.slug"],
+            ["entry.full_path", "entry.full_path"],
+            ["entry.excerpt", "entry.excerpt"],
+            ["entry.published_at", "entry.published_at"],
+            ["entry.author_name", "entry.author_name"],
+            ["entry.custom_fields.price", "entry.custom_fields.price"],
+            ["term.name", "term.name"],
+            ["site.title", "site.title"],
+            ["site.tagline", "site.tagline"],
+          ]) {
+            const opt = doc.createElement("option");
+            opt.value = tokVal;
+            opt.textContent = tokLabel;
+            tokenSelect.appendChild(opt);
+          }
+          appendLabeledField(dynSection, `dyn-token-${nid}`, "Dynamic Field Source", tokenSelect);
+
+          const bindBtn = doc.createElement("button");
+          bindBtn.type = "button";
+          bindBtn.id = "studio-bind-dynamic-btn";
+          setSafeText(bindBtn, "Bind Field");
+          bindBtn.addEventListener("click", () => {
+            store.bindDynamicField(nid, propSelect.value, `{{ ${tokenSelect.value} }}`);
+          });
+          dynSection.appendChild(bindBtn);
+
+          const bindings = node.bindings || {};
+          const boundKeys = Object.keys(bindings);
+          if (boundKeys.length > 0) {
+            const chipList = doc.createElement("ul");
+            chipList.className = "grex-binding-chips";
+            for (const bk of boundKeys) {
+              const li = doc.createElement("li");
+              const clearB = doc.createElement("button");
+              clearB.type = "button";
+              setSafeText(clearB, `Unbind ${bk}: ${bindings[bk]}`);
+              clearB.addEventListener("click", () => {
+                store.bindDynamicField(nid, bk, "");
+              });
+              li.appendChild(clearB);
+              chipList.appendChild(li);
+            }
+            dynSection.appendChild(chipList);
+          }
+          inspectorAside.appendChild(dynSection);
+        }
+
+        if (["Grid", "Stack", "Section", "ForEach"].includes(elType)) {
+          const ql = node.queryLoop || {};
+          const qlSection = doc.createElement("section");
+          qlSection.id = "grex-query-loop-panel";
+          qlSection.className = "grex-inspector-subpanel";
+          qlSection.setAttribute("aria-label", "Visual Query Loop Builder");
+          const qlHeading = Heading({ props: { level: 3, text: "Query Loop (ForEach)" } }, { document: doc });
+          qlSection.appendChild(qlHeading.element);
+
+          const qlToggleLbl = doc.createElement("label");
+          qlToggleLbl.className = "grex-field-inline";
+          const qlCheck = doc.createElement("input");
+          qlCheck.type = "checkbox";
+          qlCheck.id = `grex-ql-enabled-${nid}`;
+          qlCheck.checked = Boolean(ql.enabled);
+          const qlSpan = doc.createElement("span");
+          setSafeText(qlSpan, "Bind Container to Query Entries");
+          qlToggleLbl.appendChild(qlCheck);
+          qlToggleLbl.appendChild(qlSpan);
+          qlSection.appendChild(qlToggleLbl);
+
+          const ctSelect = doc.createElement("select");
+          for (const [val, lbl] of [
+            ["", "All Content Types"],
+            ["post", "Posts (post)"],
+            ["page", "Pages (page)"],
+            ["product", "Products (product)"],
+          ]) {
+            const opt = doc.createElement("option");
+            opt.value = val;
+            opt.textContent = lbl;
+            ctSelect.appendChild(opt);
+          }
+          ctSelect.value = ql.content_type || "";
+          appendLabeledField(qlSection, `ql-ct-${nid}`, "Content Type", ctSelect);
+
+          const termInput = doc.createElement("input");
+          termInput.type = "text";
+          termInput.placeholder = "e.g. guides";
+          termInput.value =
+            typeof ql.filter_by_term === "object" && ql.filter_by_term
+              ? ql.filter_by_term.slug || ""
+              : String(ql.filter_by_term || "");
+          appendLabeledField(qlSection, `ql-term-${nid}`, "Filter by Term Slug", termInput);
+
+          const perPageInput = doc.createElement("input");
+          perPageInput.type = "number";
+          perPageInput.value = String(ql.per_page ?? 6);
+          appendLabeledField(qlSection, `ql-per-page-${nid}`, "Items Per Page", perPageInput);
+
+          const sortDirSelect = doc.createElement("select");
+          for (const [sv, sl] of [
+            ["desc", "Newest first (desc)"],
+            ["asc", "Oldest first (asc)"],
+          ]) {
+            const opt = doc.createElement("option");
+            opt.value = sv;
+            opt.textContent = sl;
+            sortDirSelect.appendChild(opt);
+          }
+          sortDirSelect.value = ql.order_dir || "desc";
+          appendLabeledField(qlSection, `ql-sort-dir-${nid}`, "Sort Order", sortDirSelect);
+
+          const saveQl = () => {
+            if (!qlCheck.checked) {
+              store.configureQueryLoop(nid, null);
+              return;
+            }
+            const pp = Number(perPageInput.value);
+            const termSlug = termInput.value.trim();
+            store.configureQueryLoop(nid, {
+              enabled: true,
+              content_type: ctSelect.value,
+              filter_by_term: termSlug ? { taxonomy: "category", slug: termSlug } : null,
+              per_page: Number.isFinite(pp) && pp > 0 ? pp : 6,
+              order_by: ql.order_by || "published_at",
+              order_dir: sortDirSelect.value,
+            });
+          };
+          qlCheck.addEventListener("change", saveQl);
+          ctSelect.addEventListener("change", saveQl);
+          termInput.addEventListener("change", saveQl);
+          perPageInput.addEventListener("change", saveQl);
+          sortDirSelect.addEventListener("change", saveQl);
+
+          inspectorAside.appendChild(qlSection);
         }
 
         // --- Structured Visual Style Inspector (Scoped to activeBreakpoint & Class/Node) ---

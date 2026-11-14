@@ -1,6 +1,6 @@
 # GREX-BUILDER-SPEC-003: Grex Theme Builder `v0.3` — Conditional Theme Builder, Query Loop Builder & Dynamic Data Pickers
 
-**Status:** Draft / In Review (`2026-11-14`)  
+**Status:** Complete &amp; Verified (`2026-11-14`)  
 **Milestone:** `v0.3` (`v0.3.0`) — Conditional Theme Builder, Visual Query Loop Builder & Dynamic Data/Media/Menu Pickers  
 **Upstream Baselines:**
 - **GRAB:** `v1.1.0` (`grab serve --allow-scripts`, `grab check`, `grab format <file>`, `grab mcp`, `server.asset`, `use cache`, `use data`)
@@ -20,7 +20,7 @@
 ### Included in `v0.3`
 1. **Conditional Theme Builder & Template Assignment Engine:** Multiple named templates (`header`, `footer`, `single`, `archive`, `search`, `404`) and reusable global parts (`card`, `hero`, `cta`) with deterministic display conditions and conflict detection.
 2. **Visual Query Loop Builder (`ForEach` + GrabLab `query_entries`):** Visual loop configuration on `Grid`, `Stack`, or `Section` containers with live `query_entries` filtering, sorting, and pagination.
-3. **Dynamic Data, Media Library & Navigation Menu Pickers:** Safe field bindings (`GrabDecimal`/`GrabInteger`-exact), `/api/media` picker with WCAG AA `alt` enforcement, and `/api/menus` location picker.
+3. **Dynamic Data, Media Library & Navigation Menu Pickers + Live Preview Context Selector:** Safe field bindings (`GrabDecimal`/`GrabInteger`-exact), `/api/media` picker with WCAG AA `alt` enforcement, `/api/menus` location picker, and a toolbar **Live Preview Context Selector** (*Preview As: Front Page / Specific Entry / Specific Term Archive*) feeding real sample records into `GrexPreviewBridge` during editing.
 4. **Deterministic Undo/Redo Commands & Acceptance Gates:** Five new reversible commands shared with **Groxy AI** (`grab mcp`) plus full E2E verification gates.
 
 ### Deferred to `v0.4` / `v1.0.0`
@@ -114,8 +114,12 @@ Any text-bearing element (`Heading`, `Text`, `Link`, `Button`, `Image`) can bind
 - **WCAG AA `alt` Enforcement (`GREX-A11Y-002`):** If the selected media item has empty `alt_text` and `is_decorative` is `false`, the picker requires the author to enter descriptive `alt` text or explicitly mark the image decorative (`alt=""` + `aria-hidden="true"`) before binding.
 
 ### 4.3 Navigation Menu Picker (`/api/menus`)
-- `Nav` elements bind to GrabLab menu locations (`primary`, `footer`, `mobile`) via `GET /api/menus`.
+- `Nav` elements bind to GrabLab menu locations (`primary`, `footer`, `mobile`) via `GET /api/menus` / `GET /api/menus/{location}`.
 - Renders clean semantic `<nav><ul><li><a href="...">` markup with `aria-current="page"` on active routes and zero wrapper `<div>`s.
+
+### 4.4 Live Preview Context Selector (*Preview As*)
+- The Studio toolbar includes a semantic **Preview As** selector (`Front Page`, `Specific Entry`, `Specific Term Archive`, `Search Results`, `404 Page`) plus optional target entry/term picker populated from GrabLab records (`/api/query`, `/api/menus/{location}`).
+- Switching preview context pushes the resolved entry, archive items, term, and site context into `GrexPreviewBridge` (`contextSync` signal) with zero Grisp restarts so dynamic `{{ entry.* }}` / `{{ term.* }}` / `{{ site.* }}` tokens and `ForEach` Query Loops render live with real data while designing.
 
 ---
 

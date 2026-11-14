@@ -355,3 +355,95 @@ route "POST" "/api/studio/publish" using req
     give back server.json using 400, record {ok: no, error: err.message}
   end
 end
+
+make build_sample_entries
+  set e1_cf to record {price: "19.95", sku: "GRX-001", badge: "Featured", author_name: "Grex Studio"}
+  set e2_cf to record {price: "1000.00", sku: "GRX-002", badge: "New", author_name: "Urban Press"}
+  set e3_cf to record {price: "49.50", sku: "GRX-003", badge: "Guide", author_name: "Grex Team"}
+  set e1 to record {id: 101, title: "Building Fast Themes with GRAB & Grex JS", slug: "building-fast-themes", content_type: "post", taxonomy: "category", term: "guides", published_at: "2026-11-01", excerpt: "How zero-build semantic primitives power instant CMS pages.", featured_image: "/static/theme/preview-hero.svg", custom_fields: e1_cf}
+  set e2 to record {id: 102, title: "Zero-FOUC CSS Tokens & Breakpoint Architecture", slug: "zero-fouc-tokens", content_type: "post", taxonomy: "category", term: "design", published_at: "2026-11-08", excerpt: "Compile deterministic stylesheet assets before cache invalidation.", featured_image: "/static/theme/preview-card.svg", custom_fields: e2_cf}
+  set e3 to record {id: 201, title: "Starter Documentation Landing", slug: "starter-docs", content_type: "page", taxonomy: "topic", term: "docs", published_at: "2026-11-12", excerpt: "Reference layout for documentation portals.", featured_image: "/static/theme/preview-hero.svg", custom_fields: e3_cf}
+  give back [e1, e2, e3]
+end
+
+make build_sample_menus
+  set primary to [record {label: "Home", href: "/"}, record {label: "Guides", href: "/category/guides"}, record {label: "Pricing", href: "/pricing"}, record {label: "Docs", href: "/starter-docs"}]
+  set footer to [record {label: "Privacy", href: "/privacy"}, record {label: "Terms", href: "/terms"}, record {label: "Changelog", href: "/changelog"}]
+  set mobile to [record {label: "Home", href: "/"}, record {label: "Guides", href: "/category/guides"}, record {label: "Docs", href: "/starter-docs"}]
+  give back record {primary: primary, footer: footer, mobile: mobile}
+end
+
+make build_sample_media
+  set m1 to record {id: "media-hero-01", url: "/static/theme/preview-hero.svg", alt: "Grex Theme Builder modular canvas overview", width: 1200, height: 630, mime_type: "image/svg+xml", decorative: no}
+  set m2 to record {id: "media-card-02", url: "/static/theme/preview-card.svg", alt: "Responsive component tokens showcase", width: 800, height: 500, mime_type: "image/svg+xml", decorative: no}
+  set m3 to record {id: "media-divider-03", url: "/static/theme/preview-accent.svg", alt: "", width: 1200, height: 120, mime_type: "image/svg+xml", decorative: yes}
+  give back [m1, m2, m3]
+end
+
+route "GET" "/api/query" using req
+  set ct to ""
+  if req.query has "content_type"
+    set ct to text.trim using (text.from using (req.query at "content_type"))
+  end
+  set term_filter to ""
+  if req.query has "term"
+    set term_filter to text.trim using (text.from using (req.query at "term"))
+  end
+  set all_entries to call build_sample_entries
+  set filtered to []
+  set total to 0
+  for each item in all_entries
+    set matches to yes
+    if ct is not ""
+      if item.content_type is not ct
+        set matches to no
+      end
+    end
+    if matches and term_filter is not ""
+      if item.term is not term_filter
+        set matches to no
+      end
+    end
+    if matches
+      set filtered to collections.append using filtered, item
+    end
+  end
+  set pg to record {page: 1, per_page: 10, total: collections.length using filtered}
+  give back server.json using 200, record {ok: yes, items: filtered, pagination: pg}
+end
+
+route "GET" "/api/media"
+  set items to call build_sample_media
+  give back server.json using 200, record {ok: yes, media: items, total: collections.length using items}
+end
+
+route "GET" "/api/menus"
+  set menus to call build_sample_menus
+  give back server.json using 200, record {ok: yes, menus: menus}
+end
+
+route "GET" "/api/menus/{location}" using req
+  set loc to text.from using req.params.location
+  set menus to call build_sample_menus
+  set items to menus.primary
+  if loc is "footer"
+    set items to menus.footer
+  otherwise
+    if loc is "mobile"
+      set items to menus.mobile
+    otherwise
+      if loc is not "primary"
+        give back server.json using 404, record {ok: no, error: "Unknown menu location"}
+      end
+    end
+  end
+  give back server.json using 200, record {ok: yes, location: loc, menu: items}
+end
+
+route "GET" "/api/preview/context"
+  set entries to call build_sample_entries
+  set menus to call build_sample_menus
+  set media to call build_sample_media
+  set site to record {title: "Grex Studio Site", tagline: "Responsive GRAB + Grex JS Publishing", url: "http://127.0.0.1:8080"}
+  give back server.json using 200, record {ok: yes, site: site, entries: entries, menus: menus, media: media}
+end

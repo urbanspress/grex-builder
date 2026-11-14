@@ -1,20 +1,13 @@
-# HANDOFF.md — Tandem Ownership & Session State
+# Grex Theme Builder — Handoff Ledger
 
-**Current Owner:** Google Antigravity  
-**Active Milestone:** `v0.3` (`GREX-BUILDER-SPEC-003.md` drafted; awaiting owner approval before implementation)  
-**Repository:** `urbanspress/grex-builder.progress` / `urbanspress/grex-builder.stable` (`C:\Development\grex-builder`)
+**Last Updated:** 2026-11-14  
+**Active Owner:** Google Antigravity  
+**Current Milestone State:** **`v0.3.0` COMPLETE & VERIFIED** (`v0.1.0` + `v0.2.0` + `v0.3.0` shipped & verified)
 
----
+## Completed Milestones
+- **`v0.1.0`:** Bootstrap, `mode: "visual"` theme contract, `createBuilderStore`, deterministic `commands.js`, split-screen `studio.js`, origin-checked `GrexPreviewBridge`, GRAB Draft/Publish workflow, 100% E2E verification, PDF walkthrough, and synchronized `origin` + `stable` releases.
+- **`v0.2.0`:** Committed vector badges in `docs/badges/`, Global Theme Token Editor & WCAG AA contrast warnings (`GREX-A11Y-001`), Bricks-Style Reusable Class Manager (`createClassManager`), Responsive Breakpoint Switcher (`Desktop >= 1025px`, `Tablet <= 1024px`, `Mobile <= 767px`), structured Style Inspector, zero-FOUC CSS-first Publish, 10/10 Node + 5/5 E2E verification gates, PDF guide, and synchronized `v0.2.0` releases.
+- **`v0.3.0`:** Conditional Theme Builder & template assignment engine (`header`, `footer`, `home`, `single`, `archive`, `search`, `404` + reusable parts; specificity resolution, `exclude` rules, and `GREX-TPL-CONFLICT` Publish gate), Visual Query Loop Builder (`ForEach` + GrabLab `query_entries` with zero wrapper `<div>`), Dynamic Data Picker (`GrabDecimal`/`GrabInteger`-exact + XSS/URL guards), Media Library & Navigation Menu Pickers (`GREX-A11Y-002`, `/api/media`, `/api/menus`), toolbar **Live Preview Context Selector** (*Preview As*), standalone GRAB API routes (`/api/query`, `/api/media`, `/api/menus`, `/api/menus/{location}`, `/api/preview/context`), 6 deterministic undo/redo commands (`setTemplateConditions`, `upsertTemplate`, `configureQueryLoop`, `bindDynamicField`, `bindMediaAsset`, `bindNavigationMenu`), 15/15 Node unit/DOM/a11y tests + 5/5 Python E2E gates passing at 100%, `Grex-Builder-v0.3.0-Guide.pdf`, packaged theme archive & checksums.
 
-## Current Status (`v0.2.0` Complete)
-- **`v0.2.0` Implemented & Verified (`100%` pass):**
-  - Global Theme Token Editor (`createTheme`) with Light/Dark modes, `prefersColorScheme`, and live `GREX-A11Y-001` WCAG AA (`< 4.5:1`) contrast warnings.
-  - Bricks-Style Reusable Class Manager (`createClassManager({ prefix: "grex-c-" })`) with create, rename, duplicate, delete, and site-wide cascade across slots.
-  - Responsive Breakpoint Switcher (`Desktop >= 1025px`, `Tablet <= 1024px`, `Mobile <= 767px`) compiling deterministic media-query CSS into `/static/grex/tokens.css` and `/static/grex/builder.css`.
-  - Structured Visual Style Inspector (Box Model, Layout, Typography, Border & Background) backed by deterministic undo/redo commands (`setThemeToken`, `upsertClass`, `assignClass`, `setBreakpointStyle`).
-  - Zero-FOUC CSS-first Publish pipeline & 1:1 `GrexPreviewBridge` live style sheet sync.
-  - Verified with `node --test tests/*.test.js` (10/10 passing) and `python tests/integration_e2e.py` (5/5 E2E gates passing).
-  - Release assets packaged via `scripts/package_release.py --version 0.2.0` and `docs/releases/generate_release_guides.py` (`docs/releases/pdf/Grex-Builder-v0.2.0-Guide.pdf`).
-
-## Next Pending Task
-1. Review and approve `specifications/GREX-BUILDER-SPEC-003.md` (`v0.3` — Conditional Theme Builder, Visual Query Loop Builder, and Dynamic Data/Media/Menu Pickers) before starting implementation.
+## Next Recommended Action
+- Draft and seek owner approval for `specifications/GREX-BUILDER-SPEC-004.md` (`v0.4` — Revision History Snapshots, One-Click Rollback & `GRAB-DESIGN-SYSTEM.md` AI Guardrails for `grab mcp`).

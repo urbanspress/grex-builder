@@ -187,7 +187,13 @@ def test_grab_html_templates():
 
 def test_node_unit_and_dom_suite():
     print("[3/5] Running Node unit, DOM, accessibility, command stack & bridge tests...")
-    res = run_cmd(["node", "--test", "tests/unit_store_commands.test.js", "tests/dom_studio_bridge.test.js"])
+    res = run_cmd([
+        "node",
+        "--test",
+        "tests/unit_store_commands.test.js",
+        "tests/dom_studio_bridge.test.js",
+        "tests/unit_v03_conditional_dynamic.test.js",
+    ])
     assert "fail 0" in res.stdout or res.returncode == 0, res.stdout
 
 
@@ -226,6 +232,8 @@ def test_live_studio_server():
         env = os.environ.copy()
         env["GREX_STATIC_DIR"] = str(static_grex).replace("\\", "/")
 
+        studio_out = (tmp / "studio.stdout.log").open("w+", encoding="utf-8", errors="replace")
+        studio_err = (tmp / "studio.stderr.log").open("w+", encoding="utf-8", errors="replace")
         proc = subprocess.Popen(
             [
                 str(GRAB_BIN),
@@ -253,8 +261,8 @@ def test_live_studio_server():
             ],
             cwd=str(tmp),
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=studio_out,
+            stderr=studio_err,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -327,10 +335,36 @@ def test_live_studio_server():
                     "mobile": {"padding": "1rem"},
                 }
             }
+            draft_doc["templateRegistry"] = [
+                {
+                    "id": "tpl-guides-archive",
+                    "name": "Guides Term Archive",
+                    "slot": "archive",
+                    "priority": 25,
+                    "conditions": [{"type": "taxonomy_term", "value": "guides", "operator": "include"}],
+                }
+            ]
             st, _, _, _, dr_res = http_req(
                 port, "POST", "/api/studio/draft", {"document": draft_doc}, headers={"X-CSRF-Token": csrf}
             )
             assert st == 200 and dr_res["ok"] is True
+
+            # Verify v0.3 standalone /api/query, /api/media, /api/menus/*, and /api/preview/context
+            st, _, _, _, q_res = http_req(port, "GET", "/api/query?content_type=post&term=guides")
+            assert st == 200 and q_res["ok"] is True and len(q_res["items"]) == 1, q_res
+            assert q_res["items"][0]["custom_fields"]["price"] == "19.95", q_res
+
+            st, _, _, _, m_res = http_req(port, "GET", "/api/media")
+            assert st == 200 and m_res["ok"] is True and m_res["total"] >= 2, m_res
+
+            st, _, _, _, nav_res = http_req(port, "GET", "/api/menus/primary")
+            assert st == 200 and nav_res["ok"] is True and len(nav_res["menu"]) >= 3, nav_res
+            st, _, _, _, bad_nav = http_req(port, "GET", "/api/menus/nonexistent")
+            assert st == 404 and bad_nav["ok"] is False, bad_nav
+
+            st, _, _, _, ctx_res = http_req(port, "GET", "/api/preview/context")
+            assert st == 200 and ctx_res["ok"] is True and len(ctx_res["entries"]) >= 3, ctx_res
+            assert any(e["custom_fields"]["price"] == "1000.00" for e in ctx_res["entries"]), ctx_res
 
             st, _, _, _, st2 = http_req(port, "GET", "/api/studio/state")
             assert (
@@ -371,6 +405,7 @@ def test_live_studio_server():
                 == "Draft Hero Headline"
             )
             assert st3["published"]["classes"]["hero-card"]["tablet"]["padding"] == "1.5rem"
+            assert st3["published"]["templateRegistry"][0]["id"] == "tpl-guides-archive"
             assert st3["live_epoch"] == epoch0 + 1
 
             st, _, _, served_builder_css, _ = http_req(port, "GET", "/static/grex/builder.css")
@@ -381,6 +416,8 @@ def test_live_studio_server():
         finally:
             proc.terminate()
             proc.wait(timeout=5)
+            studio_out.close()
+            studio_err.close()
 
 
 def test_grablab_cms_visual_theme_integration():
@@ -449,6 +486,8 @@ def test_grablab_cms_visual_theme_integration():
         cms_env["GRABLAB_MAX_UPLOAD_BYTES"] = "10485760"
 
         port = free_port()
+        cms_out = (Path(td) / "cms.stdout.log").open("w+", encoding="utf-8", errors="replace")
+        cms_err = (Path(td) / "cms.stderr.log").open("w+", encoding="utf-8", errors="replace")
         proc = subprocess.Popen(
             [
                 str(GRAB_BIN),
@@ -478,8 +517,8 @@ def test_grablab_cms_visual_theme_integration():
             ],
             cwd=str(cms),
             env=cms_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=cms_out,
+            stderr=cms_err,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -562,9 +601,17 @@ def test_grablab_cms_visual_theme_integration():
             body_html = ul_res.get("body_html") or (ul_res.get("entry") or {}).get("body_html", "")
             assert st == 200 and "<div" not in body_html.lower(), (st, ul_res)
             assert "Edited by Groxy AI + Grex Theme Builder" in body_html, ul_res
+
+            # Verify GrabLab CMS v1.0.0 public Query & Menu contract endpoints work alongside Grex Builder
+            st, _, _, _, cms_q = http_req(port, "GET", "/api/query")
+            assert st == 200 and "items" in cms_q and "pagination" in cms_q, cms_q
+            st, _, _, _, cms_m = http_req(port, "GET", "/api/menus/primary")
+            assert st == 200, cms_m
         finally:
             proc.terminate()
             proc.wait(timeout=5)
+            cms_out.close()
+            cms_err.close()
 
 
 def main():
