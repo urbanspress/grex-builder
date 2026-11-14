@@ -1,0 +1,5 @@
+# Mark vendored Grex JS bundles and compiled static assets so GitHub language stats stay clean
+public/grex/* linguist-vendored
+theme/assets/grex/* linguist-vendored
+public/theme/grex.js linguist-vendored
+theme/assets/grex.js linguist-vendored
