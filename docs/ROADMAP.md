@@ -44,3 +44,14 @@ Pre-`v1.0.0` security, semantic zero-`<div>` DOM, CSS-first zero-FOUC, asset byt
 
 - Production freeze of `theme.json` (`"version": "1.0.0"`, `mode: "visual"`), `grex.elements.json` (20 elements), `createBuilderStore`, 17-command `createCommandStack`, origin-checked `GrexPreviewBridge` v1.0, `template_revisions` + zero-FOUC CSS-first Publish/Restore, `GRAB-DESIGN-SYSTEM.md` + `POST /api/mcp/layout` AI guardrails, and hardened `--read-only` Docker templates (`deploy/docker-compose.yml` + `deploy/README.md`).
 - Synchronized `v1.0.0` release assets published to `urbanspress/grex-builder.progress` and `urbanspress/grex-builder.stable`: [Grex-Builder-v1.0.0-Guide.pdf](releases/pdf/Grex-Builder-v1.0.0-Guide.pdf), `grex-builder-v1.0.0-theme.zip`, and `SHA256SUMS.txt`.
+
+---
+
+## `v1.1.0` — Visual Custom Email Template Mode (`mode: "email"`) & Bulletproof Inline-CSS Email Compiler
+
+**Status:** Planned — Backwards-Compatible Minor Feature
+
+Scope:
+- **Zero-Wrapper-`<div>` Email Studio (`mode: "email"`):** Extends Grex Theme Builder with a visual email template designer backed by `--grex-*` tokens, `GRAB-DESIGN-SYSTEM.md`, and deterministic undo/redo command parity.
+- **Bulletproof Inline-CSS Email Compiler:** Compiles visual layouts into responsive inline-CSS HTML (email-client-safe structural layout without `<div>` wrapper bloat in editor source) plus synchronized plain-text fallback emails compatible with **Gmail**, **Apple Mail**, and **Outlook**.
+- **Ecosystem Integration:** Supplies verified email templates for **GrabLab CMS `v1.2.0`** transactional `email_outbox` events and **Groxy AI `v1.3.0`** post-purchase flows without altering frozen `v1.0.0` theme contracts.

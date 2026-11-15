@@ -15,3 +15,10 @@
 - **Step 3 (`grex-builder v1.0.0` — Grex Theme Builder) is 100% Complete.**
 - **Ecosystem Next Active Milestone:** **Step 4 (`groxy-ai` — Autonomous Design & SEO Agent)** in `urbanspress/groxy-ai.progress` / `urbanspress/groxy-ai.stable`.
 - Recommended next model routing: Switch to **`Google Hydrogen (Medium)`** to draft the initial `GROXY-AI-SPEC-001.md` specification (or **`Orchestrator (Argon)`** for multi-repo `GRAB` + `GrabLab CMS` + `Grex Theme Builder` MCP integration planning).
+
+---
+
+## Planned Backwards-Compatible Minor Track (`v1.1.0`)
+
+- **Milestone `v1.1.0` — Visual Custom Email Template Mode (`mode: "email"`) & Bulletproof Inline-CSS Email Compiler:** `Status: Planned — Backwards-Compatible Minor Feature` (zero `v1.0.0` implementation code modified):
+  - Zero-wrapper-`<div>` studio email designer compiling responsive inline-CSS HTML + plain-text fallback emails compatible with Gmail, Apple Mail, and Outlook.
