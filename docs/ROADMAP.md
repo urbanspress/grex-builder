@@ -55,3 +55,13 @@ Scope:
 - **Zero-Wrapper-`<div>` Email Studio (`mode: "email"`):** Extends Grex Theme Builder with a visual email template designer backed by `--grex-*` tokens, `GRAB-DESIGN-SYSTEM.md`, and deterministic undo/redo command parity.
 - **Bulletproof Inline-CSS Email Compiler:** Compiles visual layouts into responsive inline-CSS HTML (email-client-safe structural layout without `<div>` wrapper bloat in editor source) plus synchronized plain-text fallback emails compatible with **Gmail**, **Apple Mail**, and **Outlook**.
 - **Ecosystem Integration:** Supplies verified email templates for **GrabLab CMS `v1.2.0`** transactional `email_outbox` events and **Groxy AI `v1.3.0`** post-purchase flows without altering frozen `v1.0.0` theme contracts.
+
+---
+
+## `v1.2.0` — Rich Semantic Section Templates & CSS-Only Motion Presets
+
+**Status:** Planned — Backwards-Compatible Minor Feature
+
+Scope:
+- **Rich Semantic Section Templates (`divCount === 0`):** Adds accessible semantic patterns including `<details>` pricing/FAQ toggles, sticky glassmorphic `<nav>` headers, `<dialog>` modal drawers, and responsive bento grids built purely on `grex.elements.json` without wrapper `<div>` elements.
+- **CSS-Only Motion Presets:** Adds GPU-friendly CSS-only scroll/hover transitions (`prefers-reduced-motion` compliant) so **Groxy AI** (`v1.6.0`+) can compose richer visual pages without runtime JavaScript animation bloat.
