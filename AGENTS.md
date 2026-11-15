@@ -48,6 +48,13 @@ Before designing, editing, or reviewing any file, read [GREX-BUILDER-EXPERT.md](
 ````
 - **Brand Naming Invariant:** Always write **Grex Theme Builder** in human-facing prose, headings, UI labels, PDF guides, and release notes, reserving `grex-builder` strictly for machine slugs (`urbanspress/grex-builder.progress`, `urbanspress/grex-builder.stable`, directory paths, `"slug": "grex-builder"`, and archive filenames).
 
+### Mandatory Milestone Snapshot Rule
+- **Ecosystem Snapshot Sync:** At the end of every milestone (before closing the milestone or pushing release promotions), every agent MUST run:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File C:\Development\GRAB\scripts\sync-notebook-sources.ps1
+  ```
+  so `C:\Development\ECOSYSTEM-SNAPSHOT.md` always reflects the latest Git branches, commits, tags, `AGENTS.md`, `*-EXPERT.md`, `HANDOFF.md`, `docs\ROADMAP.md`, and `specifications\*.md` across all discovered `C:\Development\*` repositories.
+
 ---
 
 ## 3. Model Routing & Tandem Handoff
